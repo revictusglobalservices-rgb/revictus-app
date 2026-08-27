@@ -98,19 +98,14 @@ export default function PointagePanel({
     return Math.max(0, Math.floor((fin - new Date(pointage.check_in).getTime()) / 1000));
   }, [pointage, maintenant]);
 
+  // Toutes les heures (arrivée, départ, début/fin de pause) sont calculées
+  // côté serveur (fonctions RPC, `now()` Postgres) pour ne jamais dépendre de
+  // l'horloge du poste client — un écart d'horloge navigateur/serveur peut
+  // sinon produire des durées négatives ou incohérentes entre pause et pointage.
   async function pointerArrivee() {
     setErreur(null);
     setEnCours(true);
-    const { data, error } = await supabase
-      .from("pointages")
-      .insert({
-        utilisateur_id: currentUserId,
-        date: dateDuJour,
-        check_in: new Date().toISOString(),
-        statut: "ouvert",
-      } as never)
-      .select("*")
-      .single();
+    const { data, error } = await supabase.rpc("pointer_arrivee", { p_date: dateDuJour });
     setEnCours(false);
     if (error) {
       setErreur("Impossible de pointer l'arrivée : " + error.message);
@@ -127,14 +122,7 @@ export default function PointagePanel({
     }
     setErreur(null);
     setEnCours(true);
-    const checkOut = new Date();
-    const duree = Math.max(0, secondesEcoulees - secondesPauses);
-    const { data, error } = await supabase
-      .from("pointages")
-      .update({ check_out: checkOut.toISOString(), statut: "ferme", duree_secondes: duree } as never)
-      .eq("id", pointage.id)
-      .select("*")
-      .single();
+    const { data, error } = await supabase.rpc("pointer_depart", { p_id: pointage.id });
     setEnCours(false);
     if (error) {
       setErreur("Impossible de pointer le départ : " + error.message);
@@ -147,11 +135,7 @@ export default function PointagePanel({
     if (!pointage) return;
     setErreur(null);
     setEnCours(true);
-    const { data, error } = await supabase
-      .from("pauses")
-      .insert({ pointage_id: pointage.id, type } as never)
-      .select("*")
-      .single();
+    const { data, error } = await supabase.rpc("demarrer_pause", { p_pointage_id: pointage.id, p_type: type });
     setEnCours(false);
     if (error) {
       setErreur("Impossible de démarrer la pause : " + error.message);
@@ -164,12 +148,7 @@ export default function PointagePanel({
     if (!pauseActive) return;
     setErreur(null);
     setEnCours(true);
-    const { data, error } = await supabase
-      .from("pauses")
-      .update({ fin: new Date().toISOString() } as never)
-      .eq("id", pauseActive.id)
-      .select("*")
-      .single();
+    const { data, error } = await supabase.rpc("terminer_pause", { p_pause_id: pauseActive.id });
     setEnCours(false);
     if (error) {
       setErreur("Impossible de terminer la pause : " + error.message);

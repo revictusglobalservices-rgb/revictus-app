@@ -103,7 +103,12 @@ export type Database = {
       sessions_temps: TableDef<SessionTemps>;
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      pointer_arrivee: { Args: { p_date: string }; Returns: Pointage };
+      pointer_depart: { Args: { p_id: string }; Returns: Pointage };
+      demarrer_pause: { Args: { p_pointage_id: string; p_type: TypePause }; Returns: Pause };
+      terminer_pause: { Args: { p_pause_id: string }; Returns: Pause };
+    };
     Enums: Record<string, never>;
   };
 };
