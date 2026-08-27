@@ -6,6 +6,7 @@
 // `pauses` dans la publication `supabase_realtime`, comme pour `taches`).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDecalageHorloge } from "@/lib/useDecalageHorloge";
 import type { Pause, Pointage, TypePause } from "@/types/database";
 
 const PAUSE_LABEL: Record<TypePause, string> = {
@@ -39,9 +40,11 @@ export default function PointagePanel({
   pausesInitiales: Pause[];
 }) {
   const supabase = useMemo(() => createClient(), []);
+  const decalageMs = useDecalageHorloge(supabase);
   const [pointage, setPointage] = useState<Pointage | null>(pointageInitial);
   const [pauses, setPauses] = useState<Pause[]>(pausesInitiales);
-  const [maintenant, setMaintenant] = useState(() => Date.now());
+  const [horlogeLocale, setHorlogeLocale] = useState(() => Date.now());
+  const maintenant = horlogeLocale + decalageMs;
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
 
@@ -80,7 +83,7 @@ export default function PointagePanel({
 
   useEffect(() => {
     if (!pointage || pointage.statut !== "ouvert") return;
-    const id = setInterval(() => setMaintenant(Date.now()), 1000);
+    const id = setInterval(() => setHorlogeLocale(Date.now()), 1000);
     return () => clearInterval(id);
   }, [pointage]);
 

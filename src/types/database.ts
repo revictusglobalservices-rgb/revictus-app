@@ -108,6 +108,8 @@ export type Database = {
       pointer_depart: { Args: { p_id: string }; Returns: Pointage };
       demarrer_pause: { Args: { p_pointage_id: string; p_type: TypePause }; Returns: Pause };
       terminer_pause: { Args: { p_pause_id: string }; Returns: Pause };
+      heure_serveur: { Args: Record<string, never>; Returns: string };
+      arreter_session: { Args: { p_id: string }; Returns: SessionTemps };
     };
     Enums: Record<string, never>;
   };

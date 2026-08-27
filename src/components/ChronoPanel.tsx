@@ -5,6 +5,7 @@
 // dans la publication `supabase_realtime`, comme pour `taches`).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDecalageHorloge } from "@/lib/useDecalageHorloge";
 import type { SessionTemps, StatutTache } from "@/types/database";
 
 type TacheOption = { id: string; titre: string; statut: StatutTache };
@@ -34,6 +35,7 @@ export default function ChronoPanel({
   sessionsRecentesInitiales: SessionTemps[];
 }) {
   const supabase = useMemo(() => createClient(), []);
+  const decalageMs = useDecalageHorloge(supabase);
   const [sessionActive, setSessionActive] = useState<SessionTemps | null>(sessionActiveInitiale);
   const [sessionsRecentes, setSessionsRecentes] = useState<SessionTemps[]>(sessionsRecentesInitiales);
   const [elapsed, setElapsed] = useState(0);
@@ -86,11 +88,11 @@ export default function ChronoPanel({
       return;
     }
     const debutMs = new Date(sessionActive.debut).getTime();
-    const tick = () => setElapsed(Math.floor((Date.now() - debutMs) / 1000));
+    const tick = () => setElapsed(Math.floor((Date.now() + decalageMs - debutMs) / 1000));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [sessionActive]);
+  }, [sessionActive, decalageMs]);
 
   async function demarrer() {
     if (!tacheSelectionnee) {
@@ -115,14 +117,7 @@ export default function ChronoPanel({
   async function arreter() {
     if (!sessionActive) return;
     setEnCours(true);
-    const fin = new Date();
-    const duree = Math.max(0, Math.floor((fin.getTime() - new Date(sessionActive.debut).getTime()) / 1000));
-    const { data, error } = await supabase
-      .from("sessions_temps")
-      .update({ fin: fin.toISOString(), duree_secondes: duree } as never)
-      .eq("id", sessionActive.id)
-      .select("*")
-      .single();
+    const { data, error } = await supabase.rpc("arreter_session", { p_id: sessionActive.id });
     setEnCours(false);
     if (error) {
       setErreur("Impossible d'arrêter : " + error.message);
