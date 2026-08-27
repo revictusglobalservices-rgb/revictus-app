@@ -17,6 +17,9 @@ export default function TopNav({ nom }: { nom: string }) {
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
       <span style={{ fontSize: 14, color: "var(--ink-2)" }}>{nom}</span>
       <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+        <a href="/pointage" style={{ fontSize: 14, color: "var(--navy)", fontWeight: 600 }}>
+          Pointage
+        </a>
         <a href="/chrono" style={{ fontSize: 14, color: "var(--navy)", fontWeight: 600 }}>
           Chrono
         </a>

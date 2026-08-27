@@ -78,6 +78,16 @@ export type SessionTemps = {
   created_at: string;
 };
 
+export type TypePause = "petite_pause" | "pause_dejeuner" | "permission";
+
+export type Pause = {
+  id: string;
+  pointage_id: string;
+  type: TypePause;
+  debut: string;
+  fin: string | null;
+};
+
 // Placeholder minimal pour que `createClient<Database>()` compile dès maintenant.
 // À affiner (ou remplacer entièrement) avec `supabase gen types`.
 type TableDef<Row> = { Row: Row; Insert: Partial<Row>; Update: Partial<Row>; Relationships: [] };
@@ -89,6 +99,7 @@ export type Database = {
       taches: TableDef<Tache>;
       colonnes_kanban: TableDef<ColonneKanban>;
       pointages: TableDef<Pointage>;
+      pauses: TableDef<Pause>;
       sessions_temps: TableDef<SessionTemps>;
     };
     Views: Record<string, never>;
