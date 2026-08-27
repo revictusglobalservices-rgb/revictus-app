@@ -46,6 +46,15 @@ export type Tache = {
   deleted_at: string | null;
 };
 
+export type ColonneKanban = {
+  id: string;
+  entreprise_id: string;
+  nom: string;
+  statut_lie: StatutTache;
+  ordre: number;
+  created_at: string;
+};
+
 export type Pointage = {
   id: string;
   utilisateur_id: string;
@@ -78,6 +87,7 @@ export type Database = {
     Tables: {
       utilisateurs: TableDef<Utilisateur>;
       taches: TableDef<Tache>;
+      colonnes_kanban: TableDef<ColonneKanban>;
       pointages: TableDef<Pointage>;
       sessions_temps: TableDef<SessionTemps>;
     };

@@ -2,6 +2,7 @@
 // pointage du jour, chrono actif, tâches prioritaires, Kanban personnel, activité récente.
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import TopNav from "@/components/TopNav";
 
 export default async function DashboardCollaborateur() {
   const supabase = createClient();
@@ -18,6 +19,7 @@ export default async function DashboardCollaborateur() {
 
   return (
     <main style={{ maxWidth: 960, margin: "0 auto", padding: 32 }}>
+      <TopNav nom={profil?.nom ?? ""} />
       <h1 style={{ color: "var(--navy)" }}>Bonjour {profil?.nom ?? ""}</h1>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginTop: 24 }}>
         <section className="card">

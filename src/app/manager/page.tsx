@@ -3,6 +3,7 @@
 // Le manager lit ET modifie toutes les données de son équipe (décision du 27/08/2026).
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import TopNav from "@/components/TopNav";
 
 export default async function DashboardManager() {
   const supabase = createClient();
@@ -11,13 +12,14 @@ export default async function DashboardManager() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: equipe } = await supabase
-    .from("utilisateurs")
-    .select("id, nom, statut")
-    .eq("manager_id", user.id);
+  const [{ data: profil }, { data: equipe }] = await Promise.all([
+    supabase.from("utilisateurs").select("nom").eq("id", user.id).single(),
+    supabase.from("utilisateurs").select("id, nom, statut").eq("manager_id", user.id),
+  ]);
 
   return (
     <main style={{ maxWidth: 960, margin: "0 auto", padding: 32 }}>
+      <TopNav nom={profil?.nom ?? ""} />
       <h1 style={{ color: "var(--navy)" }}>Tableau de bord manager</h1>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginTop: 24 }}>
         <section className="card">

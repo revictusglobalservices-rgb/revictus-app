@@ -1,0 +1,362 @@
+"use client";
+
+// Tableau Kanban — glisser-déposer entre colonnes, création rapide de tâches,
+// synchronisation temps réel via Supabase Realtime (section 8 du cadrage : latence < 10s).
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { createClient } from "@/lib/supabase/client";
+import type { ColonneKanban, PrioriteTache, Tache } from "@/types/database";
+
+type Membre = { id: string; nom: string };
+
+const PRIORITE_LABEL: Record<PrioriteTache, string> = {
+  urgent: "Urgent",
+  important: "Important",
+  normal: "Normal",
+};
+
+const PRIORITE_COLOR: Record<PrioriteTache, string> = {
+  urgent: "var(--urgent)",
+  important: "var(--important)",
+  normal: "var(--normal)",
+};
+
+const COLONNES_DEFAUT: Array<{ nom: string; statut_lie: Tache["statut"]; ordre: number }> = [
+  { nom: "À faire", statut_lie: "a_faire", ordre: 0 },
+  { nom: "En cours", statut_lie: "en_cours", ordre: 1 },
+  { nom: "En attente", statut_lie: "en_attente", ordre: 2 },
+  { nom: "Terminée", statut_lie: "terminee", ordre: 3 },
+];
+
+export default function KanbanBoard({
+  entrepriseId,
+  currentUserId,
+}: {
+  entrepriseId: string;
+  currentUserId: string;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const [colonnes, setColonnes] = useState<ColonneKanban[]>([]);
+  const [taches, setTaches] = useState<Tache[]>([]);
+  const [membres, setMembres] = useState<Membre[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [ajoutColonneId, setAjoutColonneId] = useState<string | null>(null);
+  const [nouveauTitre, setNouveauTitre] = useState("");
+  const [nouvellePriorite, setNouvellePriorite] = useState<PrioriteTache>("normal");
+  const [dragTacheId, setDragTacheId] = useState<string | null>(null);
+
+  const chargerTaches = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("taches")
+      .select("*")
+      .is("deleted_at", null)
+      .order("ordre", { ascending: true });
+    if (error) {
+      setErreur(error.message);
+      return;
+    }
+    setTaches(data ?? []);
+  }, [supabase]);
+
+  const chargerTout = useCallback(async () => {
+    setLoading(true);
+    setErreur(null);
+
+    const [{ data: cols, error: colErr }, { data: users }] = await Promise.all([
+      supabase.from("colonnes_kanban").select("*").order("ordre", { ascending: true }),
+      supabase.from("utilisateurs").select("id, nom"),
+    ]);
+
+    if (colErr) {
+      setErreur(colErr.message);
+      setLoading(false);
+      return;
+    }
+
+    let colonnesFinales = cols ?? [];
+
+    // Première utilisation : aucune colonne configurée pour l'entreprise.
+    // On crée les 4 colonnes par défaut (droit réservé à l'admin par la RLS).
+    if (colonnesFinales.length === 0) {
+      const { data: seed, error: seedErr } = await supabase
+        .from("colonnes_kanban")
+        .insert(
+          COLONNES_DEFAUT.map((c) => ({ ...c, entreprise_id: entrepriseId })) as never
+        )
+        .select("*");
+      if (!seedErr && seed) {
+        colonnesFinales = seed;
+      }
+    }
+
+    setColonnes(colonnesFinales);
+    setMembres(users ?? []);
+    await chargerTaches();
+    setLoading(false);
+  }, [supabase, entrepriseId, chargerTaches]);
+
+  useEffect(() => {
+    chargerTout();
+  }, [chargerTout]);
+
+  // Synchronisation temps réel : toute modification de tâche par un autre
+  // collaborateur/manager rafraîchit le tableau (latence visée < 10s).
+  useEffect(() => {
+    const channel = supabase
+      .channel(`kanban-${entrepriseId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "taches", filter: `entreprise_id=eq.${entrepriseId}` },
+        () => chargerTaches()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, entrepriseId, chargerTaches]);
+
+  const tachesParColonne = useMemo(() => {
+    const map = new Map<string, Tache[]>();
+    for (const col of colonnes) map.set(col.id, []);
+    for (const t of taches) {
+      if (t.colonne_id && map.has(t.colonne_id)) map.get(t.colonne_id)!.push(t);
+    }
+    return map;
+  }, [colonnes, taches]);
+
+  const nomMembre = useCallback(
+    (id: string | null) => membres.find((m) => m.id === id)?.nom ?? null,
+    [membres]
+  );
+
+  async function deposerTache(colonneCible: ColonneKanban) {
+    if (!dragTacheId) return;
+    const tache = taches.find((t) => t.id === dragTacheId);
+    setDragTacheId(null);
+    if (!tache || tache.colonne_id === colonneCible.id) return;
+
+    const ordreCible = Math.max(0, ...(tachesParColonne.get(colonneCible.id) ?? []).map((t) => t.ordre)) + 1;
+
+    // Mise à jour optimiste de l'affichage, puis persistance en base.
+    setTaches((prev) =>
+      prev.map((t) =>
+        t.id === tache.id ? { ...t, colonne_id: colonneCible.id, statut: colonneCible.statut_lie, ordre: ordreCible } : t
+      )
+    );
+
+    const { error } = await supabase
+      .from("taches")
+      .update({ colonne_id: colonneCible.id, statut: colonneCible.statut_lie, ordre: ordreCible } as never)
+      .eq("id", tache.id);
+
+    if (error) {
+      setErreur("Impossible de déplacer la tâche : " + error.message);
+      chargerTaches();
+    }
+  }
+
+  async function creerTache(colonne: ColonneKanban) {
+    const titre = nouveauTitre.trim();
+    if (!titre) return;
+
+    const ordreCible = Math.max(0, ...(tachesParColonne.get(colonne.id) ?? []).map((t) => t.ordre)) + 1;
+
+    const { data, error } = await supabase
+      .from("taches")
+      .insert({
+        entreprise_id: entrepriseId,
+        titre,
+        priorite: nouvellePriorite,
+        statut: colonne.statut_lie,
+        colonne_id: colonne.id,
+        createur_id: currentUserId,
+        assigne_id: currentUserId,
+        ordre: ordreCible,
+      } as never)
+      .select("*")
+      .single();
+
+    if (error) {
+      setErreur("Impossible de créer la tâche : " + error.message);
+      return;
+    }
+    if (data) setTaches((prev) => [...prev, data]);
+    setNouveauTitre("");
+    setNouvellePriorite("normal");
+    setAjoutColonneId(null);
+  }
+
+  if (loading) {
+    return <p style={{ color: "var(--ink-2)" }}>Chargement du tableau…</p>;
+  }
+
+  if (colonnes.length === 0) {
+    return (
+      <p style={{ color: "var(--ink-2)" }}>
+        Aucune colonne configurée pour ton entreprise. Demande à un administrateur de se connecter une première
+        fois pour initialiser le tableau.
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      {erreur && (
+        <div
+          style={{
+            background: "#fdecea",
+            border: "1px solid var(--urgent)",
+            color: "var(--urgent)",
+            borderRadius: 8,
+            padding: "8px 12px",
+            marginBottom: 16,
+            fontSize: 14,
+          }}
+        >
+          {erreur}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 16, overflowX: "auto", alignItems: "flex-start" }}>
+        {colonnes.map((colonne) => (
+          <div
+            key={colonne.id}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => deposerTache(colonne)}
+            style={{
+              flex: "0 0 280px",
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 10,
+              minHeight: 200,
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <div
+              style={{
+                padding: "12px 14px",
+                borderBottom: "1px solid var(--border)",
+                fontWeight: 600,
+                color: "var(--navy)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <span>{colonne.nom}</span>
+              <span style={{ fontSize: 12, color: "var(--ink-2)", fontWeight: 400 }}>
+                {(tachesParColonne.get(colonne.id) ?? []).length}
+              </span>
+            </div>
+
+            <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8, flex: 1 }}>
+              {(tachesParColonne.get(colonne.id) ?? []).map((tache) => (
+                <div
+                  key={tache.id}
+                  draggable
+                  onDragStart={() => setDragTacheId(tache.id)}
+                  style={{
+                    background: "var(--bg)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                    cursor: "grab",
+                  }}
+                >
+                  <div style={{ fontSize: 14, marginBottom: 6 }}>{tache.titre}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: PRIORITE_COLOR[tache.priorite],
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {PRIORITE_LABEL[tache.priorite]}
+                    </span>
+                    {tache.assigne_id && (
+                      <span style={{ fontSize: 12, color: "var(--ink-2)" }}>{nomMembre(tache.assigne_id)}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {ajoutColonneId === colonne.id ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <input
+                    autoFocus
+                    value={nouveauTitre}
+                    onChange={(e) => setNouveauTitre(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") creerTache(colonne);
+                      if (e.key === "Escape") setAjoutColonneId(null);
+                    }}
+                    placeholder="Titre de la tâche"
+                    style={{ padding: "6px 8px", border: "1px solid var(--border)", borderRadius: 6, fontSize: 14 }}
+                  />
+                  <select
+                    value={nouvellePriorite}
+                    onChange={(e) => setNouvellePriorite(e.target.value as PrioriteTache)}
+                    style={{ padding: "6px 8px", border: "1px solid var(--border)", borderRadius: 6, fontSize: 13 }}
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="important">Important</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button
+                      onClick={() => creerTache(colonne)}
+                      style={{
+                        flex: 1,
+                        padding: "6px 8px",
+                        background: "var(--navy)",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: 6,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Ajouter
+                    </button>
+                    <button
+                      onClick={() => setAjoutColonneId(null)}
+                      style={{
+                        padding: "6px 8px",
+                        background: "transparent",
+                        border: "1px solid var(--border)",
+                        borderRadius: 6,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Annuler
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    setAjoutColonneId(colonne.id);
+                    setNouveauTitre("");
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: "1px dashed var(--border)",
+                    borderRadius: 8,
+                    padding: "8px",
+                    color: "var(--ink-2)",
+                    cursor: "pointer",
+                    fontSize: 13,
+                  }}
+                >
+                  + Ajouter une tâche
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
