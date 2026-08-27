@@ -16,10 +16,11 @@ Généré à partir du cadrage fonctionnel validé le 27/08/2026. Stack retenue 
   `service.ts`).
 - `src/middleware.ts` — rafraîchit la session à chaque requête et redirige vers `/login`
   si non connecté.
-- `src/app/` — connexion (e-mail/mot de passe + Google/Microsoft SSO), callback OAuth, et
-  les deux tableaux de bord validés en section 9 (collaborateur / manager), en placeholders
-  prêts à être branchés sur les tables réelles.
-- `src/types/database.ts` — types de départ, écrits à la main pour les tables principales.
+- `src/app/` — connexion (Google SSO ; Microsoft écarté pour le MVP, ajoutable plus tard),
+  callback OAuth, les deux tableaux de bord (collaborateur / manager, section 9) branchés
+  sur les données réelles, et les écrans Kanban, Chrono et Pointage (section 4/5/7).
+- `src/types/database.ts` — types écrits à la main, incluant les fonctions RPC serveur
+  (pointage, chrono) qui évitent tout écart d'horloge client/serveur.
 
 ## Démarrer
 
@@ -62,16 +63,29 @@ Connecter le repo à Vercel, renseigner les 3 variables d'environnement
 dans Project Settings → Environment Variables. Correspond à la section 14 du cadrage
 (Local → Préproduction → Production).
 
-## Ce qui reste à faire (hors fondations)
+## Ce qui reste à faire
 
-- Écrans Kanban (glisser-déposer), chrono, formulaires de pointage — l'essentiel de
-  l'UI, à construire par-dessus ces routes.
-- Synchronisation temps réel (section 8) via Supabase Realtime sur `taches`, `pointages`,
-  `sessions_temps` — latence visée < 10 s.
+- Écrans manager avancés : validation des corrections en attente, vue détaillée par
+  collaborateur (au-delà des compteurs actuels du dashboard).
 - Job planifié de purge des lignes en soft delete après 45 jours (`deleted_at < now() -
   interval '45 days'`) — via une Edge Function Supabase planifiée (`pg_cron`) ou un cron
   Vercel.
 - Notifications (section 10) : la table existe, il manque l'émission (via la clé de
   service) et les canaux e-mail/push/Slack-Teams/WhatsApp.
-- Les deux décisions encore ouvertes du cadrage (objectif de disponibilité, priorisation
-  des cas de test) — voir le document de cadrage, section « Décisions ouvertes ».
+- Microsoft SSO (écarté du MVP, décision du 27/08/2026) — ajoutable en suivant la même
+  procédure que Google (Azure AD app + provider Supabase).
+
+## Décisions de cadrage tranchées après les fondations
+
+- **Disponibilité (section 8)** — décision du 27/08/2026 : pas d'objectif chiffré (SLA)
+  pour le MVP, vu la taille de l'équipe (5 personnes) et l'infra (Vercel + Supabase). À
+  revoir si l'usage grandit.
+- **Procédure incident (section 8)** — décision du 27/08/2026 : pas de notification
+  automatique ; le gérant est informé (via les dashboards Vercel/Supabase) et prévient
+  l'équipe directement (WhatsApp/appel). Pas d'outil de monitoring/alerting à mettre en
+  place pour l'instant.
+- **Responsive (section 14)** — décision du 27/08/2026 : Desktop prioritaire, Mobile
+  utilisable mais moins peaufiné.
+- **Priorisation des cas de test** — décision du 27/08/2026 : pas de plan de test formel ;
+  l'équipe (Larissa, Yacinthe, Alain, Prisca) teste au fil de l'usage réel et remonte les
+  problèmes au gérant.
