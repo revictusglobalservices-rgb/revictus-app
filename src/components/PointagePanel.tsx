@@ -103,7 +103,12 @@ export default function PointagePanel({
     setEnCours(true);
     const { data, error } = await supabase
       .from("pointages")
-      .insert({ utilisateur_id: currentUserId, date: dateDuJour, statut: "ouvert" } as never)
+      .insert({
+        utilisateur_id: currentUserId,
+        date: dateDuJour,
+        check_in: new Date().toISOString(),
+        statut: "ouvert",
+      } as never)
       .select("*")
       .single();
     setEnCours(false);
