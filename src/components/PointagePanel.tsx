@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDecalageHorloge } from "@/lib/useDecalageHorloge";
-import type { Pause, Pointage, TypePause } from "@/types/database";
+import type { Correction, Pause, Pointage, TypePause } from "@/types/database";
 
 const PAUSE_LABEL: Record<TypePause, string> = {
   petite_pause: "Petite pause",
@@ -48,6 +48,17 @@ export default function PointagePanel({
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
 
+  // Demande de correction (section 6) : uniquement possible une fois le
+  // pointage clos. La demande elle-même est un insert direct (l'heure
+  // choisie vient de l'utilisateur, ce n'est pas une action "maintenant") ;
+  // seule l'approbation par le manager mute le pointage, via RPC.
+  const [corrections, setCorrections] = useState<Correction[]>([]);
+  const [formulaireOuvert, setFormulaireOuvert] = useState(false);
+  const [nouvelleArrivee, setNouvelleArrivee] = useState("");
+  const [nouveauDepart, setNouveauDepart] = useState("");
+  const [motif, setMotif] = useState("");
+  const [envoiEnCours, setEnvoiEnCours] = useState(false);
+
   const pauseActive = useMemo(() => pauses.find((p) => !p.fin) ?? null, [pauses]);
 
   const chargerPointage = useCallback(async () => {
@@ -80,6 +91,39 @@ export default function PointagePanel({
       supabase.removeChannel(channel);
     };
   }, [supabase, currentUserId, dateDuJour, chargerPointage]);
+
+  const chargerCorrections = useCallback(async () => {
+    if (!pointage) {
+      setCorrections([]);
+      return;
+    }
+    const { data } = await supabase
+      .from("corrections")
+      .select("*")
+      .eq("table_cible", "pointages")
+      .eq("ligne_id", pointage.id)
+      .order("created_at", { ascending: false });
+    setCorrections(data ?? []);
+  }, [supabase, pointage]);
+
+  useEffect(() => {
+    chargerCorrections();
+  }, [chargerCorrections]);
+
+  useEffect(() => {
+    if (!pointage) return;
+    const channel = supabase
+      .channel(`corrections-pointage-${pointage.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "corrections", filter: `ligne_id=eq.${pointage.id}` },
+        () => chargerCorrections()
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, pointage, chargerCorrections]);
 
   useEffect(() => {
     if (!pointage || pointage.statut !== "ouvert") return;
@@ -158,6 +202,51 @@ export default function PointagePanel({
       return;
     }
     setPauses((prev) => prev.map((p) => (p.id === data.id ? data : p)));
+  }
+
+  function ouvrirFormulaireCorrection() {
+    if (!pointage) return;
+    const heureLocale = (iso: string | null) => (iso ? new Date(iso).toTimeString().slice(0, 5) : "");
+    setNouvelleArrivee(heureLocale(pointage.check_in));
+    setNouveauDepart(heureLocale(pointage.check_out));
+    setMotif("");
+    setErreur(null);
+    setFormulaireOuvert(true);
+  }
+
+  async function demanderCorrection() {
+    if (!pointage) return;
+    if (!motif.trim()) {
+      setErreur("Merci d'indiquer le motif de la correction.");
+      return;
+    }
+    setErreur(null);
+    setEnvoiEnCours(true);
+
+    const versISO = (heure: string) => {
+      if (!heure) return null;
+      const [h, m] = heure.split(":").map(Number);
+      const d = new Date(pointage.date + "T00:00:00");
+      d.setHours(h, m, 0, 0);
+      return d.toISOString();
+    };
+
+    const { error } = await supabase.from("corrections").insert({
+      table_cible: "pointages",
+      ligne_id: pointage.id,
+      auteur_id: currentUserId,
+      ancienne_valeur: { check_in: pointage.check_in, check_out: pointage.check_out },
+      nouvelle_valeur: { check_in: versISO(nouvelleArrivee), check_out: versISO(nouveauDepart) },
+      motif: motif.trim(),
+    });
+
+    setEnvoiEnCours(false);
+    if (error) {
+      setErreur("Impossible d'envoyer la demande : " + error.message);
+      return;
+    }
+    setFormulaireOuvert(false);
+    chargerCorrections();
   }
 
   const boutonStyle = (couleur: string, actif = true) => ({
@@ -272,6 +361,121 @@ export default function PointagePanel({
               </div>
             ))}
           </div>
+        </section>
+      )}
+
+      {pointage && pointage.statut === "ferme" && (
+        <section>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <h3 style={{ color: "var(--navy)", margin: 0 }}>Corrections</h3>
+            {!formulaireOuvert && (
+              <button
+                onClick={ouvrirFormulaireCorrection}
+                style={{
+                  padding: "6px 14px",
+                  background: "transparent",
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  color: "var(--navy)",
+                }}
+              >
+                Demander une correction
+              </button>
+            )}
+          </div>
+
+          {formulaireOuvert && (
+            <div className="card" style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 12 }}>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, color: "var(--ink-2)" }}>
+                  Heure d&apos;arrivée
+                  <input
+                    type="time"
+                    value={nouvelleArrivee}
+                    onChange={(e) => setNouvelleArrivee(e.target.value)}
+                    style={{ padding: "6px 8px", border: "1px solid var(--border)", borderRadius: 6, fontSize: 14 }}
+                  />
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, color: "var(--ink-2)" }}>
+                  Heure de départ
+                  <input
+                    type="time"
+                    value={nouveauDepart}
+                    onChange={(e) => setNouveauDepart(e.target.value)}
+                    style={{ padding: "6px 8px", border: "1px solid var(--border)", borderRadius: 6, fontSize: 14 }}
+                  />
+                </label>
+              </div>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, color: "var(--ink-2)" }}>
+                Motif
+                <textarea
+                  value={motif}
+                  onChange={(e) => setMotif(e.target.value)}
+                  rows={2}
+                  placeholder="Explique la raison de cette correction…"
+                  style={{ padding: "8px", border: "1px solid var(--border)", borderRadius: 6, fontSize: 14, resize: "vertical" }}
+                />
+              </label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={demanderCorrection}
+                  disabled={envoiEnCours}
+                  style={{ ...boutonStyle("var(--navy)", !envoiEnCours), padding: "8px 18px", fontSize: 14 }}
+                >
+                  Envoyer la demande
+                </button>
+                <button
+                  onClick={() => setFormulaireOuvert(false)}
+                  disabled={envoiEnCours}
+                  style={{
+                    padding: "8px 18px",
+                    background: "transparent",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    fontSize: 14,
+                    cursor: envoiEnCours ? "default" : "pointer",
+                    color: "var(--ink-2)",
+                  }}
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          )}
+
+          {corrections.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {corrections.map((c) => (
+                <div
+                  key={c.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "10px 14px",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    fontSize: 14,
+                  }}
+                >
+                  <span>{c.motif}</span>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color:
+                        c.statut === "approuvee" ? "var(--normal)" : c.statut === "refusee" ? "var(--urgent)" : "var(--important)",
+                    }}
+                  >
+                    {c.statut === "approuvee" ? "Approuvée" : c.statut === "refusee" ? "Refusée" : "En attente"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
     </div>

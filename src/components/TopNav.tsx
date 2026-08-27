@@ -26,6 +26,9 @@ export default function TopNav({ nom }: { nom: string }) {
         <a href="/kanban" style={{ fontSize: 14, color: "var(--navy)", fontWeight: 600 }}>
           Kanban
         </a>
+        <a href="/corrections" style={{ fontSize: 14, color: "var(--navy)", fontWeight: 600 }}>
+          Corrections
+        </a>
         <button
           onClick={seDeconnecter}
           style={{

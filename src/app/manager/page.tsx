@@ -103,6 +103,9 @@ export default async function DashboardManager() {
         <section className="card">
           <h3>Corrections en attente</h3>
           <p style={{ color: "var(--ink-2)" }}>{(corrections ?? []).length} saisie(s) à valider sous 48h.</p>
+          <a href="/corrections" style={{ fontSize: 13, color: "var(--navy)", fontWeight: 600, marginTop: 8, display: "inline-block" }}>
+            Traiter &rarr;
+          </a>
         </section>
       </div>
     </main>
