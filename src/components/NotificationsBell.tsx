@@ -5,6 +5,7 @@
 // correction et les tâches assignées. Les canaux e-mail/push/Slack-Teams/
 // WhatsApp restent à brancher plus tard (voir README).
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { NotificationRevictus } from "@/types/database";
 
@@ -21,6 +22,7 @@ function formatRelatif(iso: string) {
 
 export default function NotificationsBell({ currentUserId }: { currentUserId: string }) {
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
   const [notifications, setNotifications] = useState<NotificationRevictus[]>([]);
   const [ouvert, setOuvert] = useState(false);
 
@@ -57,6 +59,12 @@ export default function NotificationsBell({ currentUserId }: { currentUserId: st
   async function marquerLue(id: string) {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, lu: true } : n)));
     await supabase.from("notifications").update({ lu: true }).eq("id", id);
+  }
+
+  function ouvrirNotification(n: NotificationRevictus) {
+    if (!n.lu) marquerLue(n.id);
+    setOuvert(false);
+    if (n.lien) router.push(n.lien);
   }
 
   async function toutMarquerLu() {
@@ -151,7 +159,7 @@ export default function NotificationsBell({ currentUserId }: { currentUserId: st
               notifications.map((n) => (
                 <button
                   key={n.id}
-                  onClick={() => !n.lu && marquerLue(n.id)}
+                  onClick={() => ouvrirNotification(n)}
                   style={{
                     display: "block",
                     width: "100%",
@@ -160,7 +168,7 @@ export default function NotificationsBell({ currentUserId }: { currentUserId: st
                     border: "none",
                     borderBottom: "1px solid var(--border)",
                     background: n.lu ? "transparent" : "rgba(31, 58, 95, 0.06)",
-                    cursor: n.lu ? "default" : "pointer",
+                    cursor: "pointer",
                     fontSize: 13,
                     color: "var(--ink)",
                   }}

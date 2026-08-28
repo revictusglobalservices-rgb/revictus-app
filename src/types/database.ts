@@ -110,6 +110,7 @@ export type NotificationRevictus = {
   type: string;
   canal: CanalNotification;
   contenu: string;
+  lien: string | null;
   lu: boolean;
   created_at: string;
 };
