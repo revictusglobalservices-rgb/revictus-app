@@ -65,15 +65,30 @@ dans Project Settings → Environment Variables. Correspond à la section 14 du 
 
 ## Ce qui reste à faire
 
-- Écrans manager avancés : validation des corrections en attente, vue détaillée par
-  collaborateur (au-delà des compteurs actuels du dashboard).
-- Job planifié de purge des lignes en soft delete après 45 jours (`deleted_at < now() -
-  interval '45 days'`) — via une Edge Function Supabase planifiée (`pg_cron`) ou un cron
-  Vercel.
+- Vue détaillée par collaborateur côté manager (au-delà des compteurs actuels du
+  dashboard) — les corrections en attente sont déjà en place (écran `/corrections`).
 - Notifications (section 10) : la table existe, il manque l'émission (via la clé de
   service) et les canaux e-mail/push/Slack-Teams/WhatsApp.
 - Microsoft SSO (écarté du MVP, décision du 27/08/2026) — ajoutable en suivant la même
   procédure que Google (Azure AD app + provider Supabase).
+
+## Purge automatique (soft delete, 45 jours)
+
+`supabase/migrations/0007_purge_soft_delete.sql` crée la fonction `purger_soft_delete()`
+qui supprime définitivement les lignes soft-deletées depuis plus de 45 jours (prudente :
+une ligne encore référencée ailleurs est simplement retentée au passage suivant, rien
+n'est jamais supprimé en cascade silencieusement). Pour la planifier :
+
+1. Dashboard Supabase → **Database** → **Extensions** → activer **pg_cron**.
+2. Dans le SQL Editor, exécuter :
+   ```sql
+   select cron.schedule(
+     'purge-soft-delete-45j',
+     '0 3 * * *',
+     $$select public.purger_soft_delete();$$
+   );
+   ```
+3. Vérifier : `select * from cron.job;`
 
 ## Décisions de cadrage tranchées après les fondations
 
