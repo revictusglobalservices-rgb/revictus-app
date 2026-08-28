@@ -60,7 +60,9 @@ export default async function DashboardManager() {
             <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0", display: "flex", flexDirection: "column", gap: 4 }}>
               {(equipe ?? []).slice(0, 5).map((m) => (
                 <li key={m.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                  <span>{m.nom}</span>
+                  <a href={`/manager/equipe/${m.id}`} style={{ color: "var(--navy)", fontWeight: 600 }}>
+                    {m.nom}
+                  </a>
                   <span style={{ color: "var(--ink-2)" }}>{STATUT_UTIL_LABEL[m.statut]}</span>
                 </li>
               ))}
