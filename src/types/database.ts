@@ -13,6 +13,7 @@ export type PrioriteTache = "urgent" | "important" | "normal";
 export type StatutPointage = "ouvert" | "ferme";
 export type StatutCorrection = "en_attente" | "approuvee" | "refusee";
 export type TableCible = "pointages" | "sessions_temps" | "taches";
+export type CanalNotification = "in_app" | "email" | "push" | "slack_teams" | "whatsapp";
 
 export type Utilisateur = {
   id: string;
@@ -103,6 +104,16 @@ export type Correction = {
   created_at: string;
 };
 
+export type NotificationRevictus = {
+  id: string;
+  destinataire_id: string;
+  type: string;
+  canal: CanalNotification;
+  contenu: string;
+  lu: boolean;
+  created_at: string;
+};
+
 // Placeholder minimal pour que `createClient<Database>()` compile dès maintenant.
 // À affiner (ou remplacer entièrement) avec `supabase gen types`.
 type TableDef<Row> = { Row: Row; Insert: Partial<Row>; Update: Partial<Row>; Relationships: [] };
@@ -117,6 +128,7 @@ export type Database = {
       pauses: TableDef<Pause>;
       sessions_temps: TableDef<SessionTemps>;
       corrections: TableDef<Correction>;
+      notifications: TableDef<NotificationRevictus>;
     };
     Views: Record<string, never>;
     Functions: {

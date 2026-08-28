@@ -2,8 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import NotificationsBell from "@/components/NotificationsBell";
 
-export default function TopNav({ nom }: { nom: string }) {
+export default function TopNav({ nom, userId }: { nom: string; userId?: string }) {
   const router = useRouter();
   const supabase = createClient();
 
@@ -29,6 +30,7 @@ export default function TopNav({ nom }: { nom: string }) {
         <a href="/corrections" style={{ fontSize: 14, color: "var(--navy)", fontWeight: 600 }}>
           Corrections
         </a>
+        {userId && <NotificationsBell currentUserId={userId} />}
         <button
           onClick={seDeconnecter}
           style={{

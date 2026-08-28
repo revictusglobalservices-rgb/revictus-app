@@ -75,7 +75,7 @@ export default async function DashboardCollaborateur() {
 
   return (
     <main style={{ maxWidth: 960, margin: "0 auto", padding: 32 }}>
-      <TopNav nom={profil?.nom ?? ""} />
+      <TopNav nom={profil?.nom ?? ""} userId={user.id} />
       <h1 style={{ color: "var(--navy)" }}>Bonjour {profil?.nom ?? ""}</h1>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginTop: 24 }}>
         <section className="card">

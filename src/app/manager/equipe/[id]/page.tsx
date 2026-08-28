@@ -99,7 +99,7 @@ export default async function DetailCollaborateur({ params }: { params: { id: st
 
   return (
     <main style={{ maxWidth: 960, margin: "0 auto", padding: 32 }}>
-      <TopNav nom={profilViewer?.nom ?? ""} />
+      <TopNav nom={profilViewer?.nom ?? ""} userId={user.id} />
       <a href="/manager" style={{ fontSize: 14, color: "var(--ink-2)" }}>
         &larr; Tableau de bord manager
       </a>
