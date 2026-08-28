@@ -58,5 +58,9 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // Exclut aussi /api/* : ces routes gèrent leur propre authentification
+  // (ex. secret partagé pour /api/notifications/email, appelée par un
+  // trigger Supabase sans cookie de session — le middleware la redirigeait
+  // vers /login, d'où un 405 côté pg_net, bug trouvé le 28/08/2026).
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/).*)"],
 };
