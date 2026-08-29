@@ -65,12 +65,20 @@ dans Project Settings → Environment Variables. Correspond à la section 14 du 
 
 ## Ce qui reste à faire
 
-- Vue détaillée par collaborateur côté manager (au-delà des compteurs actuels du
-  dashboard) — les corrections en attente sont déjà en place (écran `/corrections`).
-- Notifications (section 10) : la table existe, il manque l'émission (via la clé de
-  service) et les canaux e-mail/push/Slack-Teams/WhatsApp.
 - Microsoft SSO (écarté du MVP, décision du 27/08/2026) — ajoutable en suivant la même
   procédure que Google (Azure AD app + provider Supabase).
+- Canaux de notification push/Slack-Teams/WhatsApp (le canal `whatsapp` existe dans
+  l'énum mais n'est pas branché — écarté pour l'instant, décision du 28/08/2026).
+
+## Fait depuis les fondations
+
+- Vue détaillée par collaborateur côté manager (`/manager/equipe/[id]`) : chrono actif,
+  temps travaillé sur 14 jours, compteurs de tâches, historique de pointage, tâches en
+  cours, demandes de correction récentes.
+- Notifications (section 10) : émission automatique par triggers SQL (demande/statut de
+  correction, tâche assignée) sur les canaux in-app (cloche avec mise à jour en direct
+  via Supabase Realtime, clic = redirection vers la page concernée) et e-mail (Gmail
+  SMTP via pg_net).
 
 ## Purge automatique (soft delete, 45 jours)
 
