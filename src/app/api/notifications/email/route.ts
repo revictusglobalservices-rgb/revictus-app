@@ -16,6 +16,7 @@ const SUJETS: Record<string, string> = {
   correction_approuvee: "Correction approuvée — Revictus",
   correction_refusee: "Correction refusée — Revictus",
   tache_assignee: "Nouvelle tâche assignée — Revictus",
+  pointage_arrivee: "Pointage d'arrivée — Revictus",
 };
 
 export async function POST(request: Request) {

@@ -66,12 +66,12 @@ dans Project Settings → Environment Variables. Correspond à la section 14 du 
 ## Ce qui reste à faire
 
 - Microsoft SSO (écarté du MVP, décision du 27/08/2026) — ajoutable en suivant la même
-  procédure que Google (Azure AD app + provider Supabase). Callback OAuth à renseigner
+  procédure que Google (Azure AD app + provider Supabase). Callback OAuth → renseigner
   dans l'app Azure : `https://qrvnqryjhvadwrkkluyg.supabase.co/auth/v1/callback` (le
   bouton « Continuer avec Microsoft » existe déjà côté front, `src/app/login/page.tsx`).
   Tentative du 29/08/2026 : le compte Microsoft personnel utilisé n'a pas de tenant
   Azure AD, et l'inscription au Microsoft 365 Developer Program a été refusée (« vous ne
-  remplissez pas les conditions pour un abonnement sandbox », raison non précisée par
+  remplissez pas les conditions pour un abonnement sandbox �, raison non précisée par
   Microsoft). Deux pistes pour la prochaine tentative : inscription Azure classique
   (peut demander une carte pour vérification d'identité, même si l'usage reste gratuit),
   ou réessayer avec un autre compte Microsoft.
@@ -84,9 +84,14 @@ dans Project Settings → Environment Variables. Correspond à la section 14 du 
   temps travaillé sur 14 jours, compteurs de tâches, historique de pointage, tâches en
   cours, demandes de correction récentes.
 - Notifications (section 10) : émission automatique par triggers SQL (demande/statut de
-  correction, tâche assignée) sur les canaux in-app (cloche avec mise à jour en direct
-  via Supabase Realtime, clic = redirection vers la page concernée) et e-mail (Gmail
-  SMTP via pg_net).
+  correction, tâche assignée, pointage d'arrivée — décision du 29/08/2026) sur les
+  canaux in-app (cloche avec mise à jour en direct via Supabase Realtime, clic =
+  redirection vers la page concernée) et e-mail (Gmail SMTP via pg_net). Le pointage
+  d'arrivée notifie le manager direct du collaborateur (ou tous les admins s'il n'en a
+  pas), avec un lien direct vers sa fiche détaillée.
+- Refonte visuelle en cours (maquette du 29/08/2026) : sidebar de navigation + groupe de
+  routes `(app)` livrés (phase 1). Restylage détaillé de chaque écran (cartes, badges,
+  etc.) à venir.
 
 ## Purge automatique (soft delete, 45 jours)
 
