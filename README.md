@@ -66,7 +66,15 @@ dans Project Settings → Environment Variables. Correspond à la section 14 du 
 ## Ce qui reste à faire
 
 - Microsoft SSO (écarté du MVP, décision du 27/08/2026) — ajoutable en suivant la même
-  procédure que Google (Azure AD app + provider Supabase).
+  procédure que Google (Azure AD app + provider Supabase). Callback OAuth à renseigner
+  dans l'app Azure : `https://qrvnqryjhvadwrkkluyg.supabase.co/auth/v1/callback` (le
+  bouton « Continuer avec Microsoft » existe déjà côté front, `src/app/login/page.tsx`).
+  Tentative du 29/08/2026 : le compte Microsoft personnel utilisé n'a pas de tenant
+  Azure AD, et l'inscription au Microsoft 365 Developer Program a été refusée (« vous ne
+  remplissez pas les conditions pour un abonnement sandbox », raison non précisée par
+  Microsoft). Deux pistes pour la prochaine tentative : inscription Azure classique
+  (peut demander une carte pour vérification d'identité, même si l'usage reste gratuit),
+  ou réessayer avec un autre compte Microsoft.
 - Canaux de notification push/Slack-Teams/WhatsApp (le canal `whatsapp` existe dans
   l'énum mais n'est pas branché — écarté pour l'instant, décision du 28/08/2026).
 
