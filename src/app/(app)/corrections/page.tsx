@@ -34,13 +34,8 @@ export default async function CorrectionsPage() {
   }
 
   return (
-    <main style={{ padding: "24px 32px", minHeight: "100vh" }}>
-      <div style={{ marginBottom: 24 }}>
-        <a href={profil.role === "collaborateur" ? "/dashboard" : "/manager"} style={{ fontSize: 14, color: "var(--ink-2)" }}>
-          &larr; Tableau de bord
-        </a>
-        <h1 style={{ color: "var(--navy)", margin: "4px 0 0" }}>Corrections en attente</h1>
-      </div>
+    <main style={{ padding: "24px 32px" }}>
+      <h1 style={{ color: "var(--navy)", margin: "0 0 24px" }}>Corrections en attente</h1>
       <CorrectionsPanel
         currentUserId={profil.id}
         aValiderInitial={aValider ?? []}

@@ -5,7 +5,6 @@
 // renvoie simplement `null` et on redirige).
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import TopNav from "@/components/TopNav";
 import type { PrioriteTache, StatutTache, StatutUtilisateur } from "@/types/database";
 
 const STATUT_LABEL: Record<StatutTache, string> = {
@@ -51,10 +50,7 @@ export default async function DetailCollaborateur({ params }: { params: { id: st
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: profilViewer }, { data: collaborateur }] = await Promise.all([
-    supabase.from("utilisateurs").select("nom").eq("id", user.id).single(),
-    supabase.from("utilisateurs").select("*").eq("id", params.id).maybeSingle(),
-  ]);
+  const { data: collaborateur } = await supabase.from("utilisateurs").select("*").eq("id", params.id).maybeSingle();
 
   // Non trouvé ou non autorisé (RLS) → retour au dashboard manager.
   if (!collaborateur) redirect("/manager");
@@ -99,7 +95,6 @@ export default async function DetailCollaborateur({ params }: { params: { id: st
 
   return (
     <main style={{ maxWidth: 960, margin: "0 auto", padding: 32 }}>
-      <TopNav nom={profilViewer?.nom ?? ""} userId={user.id} />
       <a href="/manager" style={{ fontSize: 14, color: "var(--ink-2)" }}>
         &larr; Tableau de bord manager
       </a>

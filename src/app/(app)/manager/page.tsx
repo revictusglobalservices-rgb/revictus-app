@@ -3,7 +3,6 @@
 // Le manager lit ET modifie toutes les données de son équipe (décision du 27/08/2026).
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import TopNav from "@/components/TopNav";
 import type { StatutTache, StatutUtilisateur } from "@/types/database";
 
 const STATUT_COMPTEUR_LABEL: Record<StatutTache, string> = {
@@ -50,7 +49,6 @@ export default async function DashboardManager() {
 
   return (
     <main style={{ maxWidth: 960, margin: "0 auto", padding: 32 }}>
-      <TopNav nom={profil?.nom ?? ""} userId={user.id} />
       <h1 style={{ color: "var(--navy)" }}>Tableau de bord manager</h1>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginTop: 24 }}>
         <section className="card">
