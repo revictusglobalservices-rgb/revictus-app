@@ -41,16 +41,50 @@ export default function NotificationsBell({ currentUserId }: { currentUserId: st
   }, [charger]);
 
   useEffect(() => {
-    const channel = supabase
-      .channel(`notifications-${currentUserId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "notifications", filter: `destinataire_id=eq.${currentUserId}` },
-        () => charger()
-      )
-      .subscribe();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let annule = false;
+
+    // Le client Supabase créé côté navigateur (cookies, via @supabase/ssr)
+    // ne pousse pas toujours automatiquement le token d'auth vers le canal
+    // Realtime : l'abonnement passe bien en statut SUBSCRIBED, mais côté
+    // serveur auth.uid() reste nul pour ce websocket, donc la RLS
+    // (destinataire_id = auth.uid()) bloque silencieusement tous les
+    // évènements — la cloche ne se mettait à jour qu'après un rafraîchissement
+    // de page (qui relit les notifications via une requête REST classique,
+    // authentifiée normalement). Bug diagnostiqué le 29/08/2026 avec un
+    // abonnement de test : identique mais avec `realtime.setAuth(token)`
+    // appelé avant `.subscribe()`, les évènements arrivaient bien en direct.
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (data.session?.access_token) {
+        await supabase.realtime.setAuth(data.session.access_token);
+      }
+      if (annule) return;
+
+      channel = supabase
+        .channel(`notifications-${currentUserId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "notifications", filter: `destinataire_id=eq.${currentUserId}` },
+          () => charger()
+        )
+        .subscribe();
+    })();
+
+    // Si le token est rafraîchi pendant que la cloche est montée, on
+    // repropage aussi le nouveau token vers Realtime.
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.access_token) {
+        supabase.realtime.setAuth(session.access_token);
+      }
+    });
+
     return () => {
-      supabase.removeChannel(channel);
+      annule = true;
+      subscription.unsubscribe();
+      if (channel) supabase.removeChannel(channel);
     };
   }, [supabase, currentUserId, charger]);
 
