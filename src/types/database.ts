@@ -16,6 +16,16 @@ export type TableCible = "pointages" | "sessions_temps" | "taches";
 export type CanalNotification = "in_app" | "email" | "push" | "slack_teams" | "whatsapp";
 export type TypeEntreePlanning = "horaire_travail" | "evenement";
 export type CategoriePlanning = "matin" | "apres_midi" | "journee" | "soir" | "teletravail" | "formation";
+export type NatureCongeAbsence = "conge" | "absence";
+export type TypeCongeAbsence =
+  | "conge_paye"
+  | "rtt"
+  | "conge_sans_solde"
+  | "conge_autre"
+  | "maladie"
+  | "absence_injustifiee"
+  | "absence_autre";
+export type StatutCongeAbsence = "en_attente" | "validee" | "refusee";
 
 export type Utilisateur = {
   id: string;
@@ -172,6 +182,29 @@ export type OccurrencePlanning = {
   entree_id: string | null;
 };
 
+// Congé (planifié à l'avance) ou absence (signalée le jour même ou a
+// posteriori) — même modèle, `nature` distingue les deux workflows côté
+// front. Pas de solde de jours (décision du 30/08/2026) : on n'enregistre
+// que la période.
+export type CongeAbsence = {
+  id: string;
+  utilisateur_id: string;
+  entreprise_id: string;
+  nature: NatureCongeAbsence;
+  type: TypeCongeAbsence;
+  date_debut: string;
+  date_fin: string;
+  commentaire: string | null;
+  statut: StatutCongeAbsence;
+  motif_refus: string | null;
+  createur_id: string;
+  validateur_id: string | null;
+  valide_le: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
 // Placeholder minimal pour que `createClient<Database>()` compile dès maintenant.
 // À affiner (ou remplacer entièrement) avec `supabase gen types`.
 type TableDef<Row> = { Row: Row; Insert: Partial<Row>; Update: Partial<Row>; Relationships: [] };
@@ -189,6 +222,7 @@ export type Database = {
       notifications: TableDef<NotificationRevictus>;
       planning_recurrences: TableDef<PlanningRecurrence>;
       planning_entrees: TableDef<PlanningEntree>;
+      conges_absences: TableDef<CongeAbsence>;
     };
     Views: Record<string, never>;
     Functions: {
@@ -204,6 +238,8 @@ export type Database = {
         Args: { p_utilisateur_id: string; p_debut: string; p_fin: string };
         Returns: OccurrencePlanning[];
       };
+      valider_conge_absence: { Args: { p_id: string }; Returns: CongeAbsence };
+      refuser_conge_absence: { Args: { p_id: string; p_motif?: string | null }; Returns: CongeAbsence };
     };
     Enums: Record<string, never>;
   };

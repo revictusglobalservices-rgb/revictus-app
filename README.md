@@ -117,6 +117,17 @@ dans Project Settings → Environment Variables. Correspond à la section 14 du 
   heure de fin plus petite que l'heure de début (ex. 17h-01h) — ça signifie qu'il se termine
   le lendemain (0015_planning_horaire_nuit.sql, seule contrainte restante : début ≠ fin). Le
   calcul des heures cumulées côté `/manager/planning` gère ce passage de minuit.
+- Congés / absences (30/08/2026, phase suivante après la refonte visuelle) : table dédiée
+  `conges_absences` (0016_conges_absences.sql — nature congé/absence, type par
+  nature, statut en_attente/validee/refusee, pas de solde de jours pour l'instant). Chacun
+  peut demander un congé ou signaler une absence pour lui-même (`/conges`, reste en attente
+  tant que non traité) ; le manager/admin valide/refuse (RPC `valider_conge_absence` /
+  `refuser_conge_absence`, horodatage + auteur de la décision) ou ajoute directement une
+  entrée déjà validée, depuis la fiche du collaborateur (`CongesEditor`) ou la vue globale
+  `/manager/conges`. Les congés/absences validés remplacent l'affichage "Repos"/horaires
+  dans les grilles de planning (`/planning`, `/manager/planning`) le temps de la période, et
+  ne comptent plus dans les heures prévues. Notifié comme le reste (in-app + e-mail) à
+  chaque demande et décision.
 
 ## Purge automatique (soft delete, 45 jours)
 

@@ -10,7 +10,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { CATEGORIE_COULEUR, CATEGORIE_LABEL, EVENEMENT_COULEUR, REPOS_COULEUR } from "@/lib/planningCategories";
-import type { OccurrencePlanning } from "@/types/database";
+import { ABSENCE_COULEUR, CONGE_COULEUR, NATURE_LABEL, TYPE_LABEL, couvre } from "@/lib/congesAbsences";
+import type { CongeAbsence, OccurrencePlanning } from "@/types/database";
 
 const JOURS_COURTS = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
 const MOIS_LABEL = [
@@ -68,6 +69,16 @@ function Bloc({ occurrence }: { occurrence: OccurrencePlanning }) {
   );
 }
 
+function BlocConge({ conge }: { conge: CongeAbsence }) {
+  const couleur = conge.nature === "conge" ? CONGE_COULEUR : ABSENCE_COULEUR;
+  return (
+    <div style={{ background: couleur.bg, color: couleur.fg, borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 2 }}>
+      <span style={{ fontSize: 13, fontWeight: 700 }}>{NATURE_LABEL[conge.nature]}</span>
+      <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.85 }}>{TYPE_LABEL[conge.type]}</span>
+    </div>
+  );
+}
+
 export default async function PlanningPage({ searchParams }: { searchParams: { vue?: string; semaine?: string; mois?: string } }) {
   const supabase = createClient();
   const {
@@ -91,15 +102,26 @@ export default async function PlanningPage({ searchParams }: { searchParams: { v
     const pDebut = versISO(jours[0]);
     const pFin = versISO(jours[6]);
 
-    const { data: occurrencesData } = await supabase.rpc("obtenir_planning", {
-      p_utilisateur_id: profil.id,
-      p_debut: pDebut,
-      p_fin: pFin,
-    });
+    const [{ data: occurrencesData }, { data: congesData }] = await Promise.all([
+      supabase.rpc("obtenir_planning", { p_utilisateur_id: profil.id, p_debut: pDebut, p_fin: pFin }),
+      supabase
+        .from("conges_absences")
+        .select("*")
+        .eq("utilisateur_id", profil.id)
+        .eq("statut", "validee")
+        .is("deleted_at", null)
+        .lte("date_debut", pFin)
+        .gte("date_fin", pDebut),
+    ]);
     const occurrences = (occurrencesData ?? []) as OccurrencePlanning[];
+    const congesAbsences = (congesData ?? []) as CongeAbsence[];
     const shifts = occurrences.filter((o) => o.type === "horaire_travail");
     const parJour = new Map<string, OccurrencePlanning[]>();
     for (const o of shifts) parJour.set(o.jour, [...(parJour.get(o.jour) ?? []), o]);
+
+    function congeDuJour(iso: string): CongeAbsence | null {
+      return congesAbsences.find((c) => couvre(iso, c.date_debut, c.date_fin)) ?? null;
+    }
 
     // Événements à venir (30 jours), séparés de la grille par design.
     const { data: evenementsData } = await supabase.rpc("obtenir_planning", {
@@ -142,13 +164,16 @@ export default async function PlanningPage({ searchParams }: { searchParams: { v
               const iso = versISO(d);
               const estAujourdhui = versISO(aujourdhui) === iso;
               const entrees = parJour.get(iso) ?? [];
+              const conge = congeDuJour(iso);
               return (
                 <div key={iso} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <div style={{ textAlign: "center" }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)" }}>{JOURS_COURTS[d.getDay()]}. {pad2(d.getDate())}/{pad2(d.getMonth() + 1)}</div>
                     {estAujourdhui && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", margin: "4px auto 0" }} />}
                   </div>
-                  {entrees.length > 0 ? (
+                  {conge ? (
+                    <BlocConge conge={conge} />
+                  ) : entrees.length > 0 ? (
                     entrees.map((o, i) => <Bloc key={i} occurrence={o} />)
                   ) : (
                     <div style={{ background: REPOS_COULEUR.bg, color: REPOS_COULEUR.fg, borderRadius: 10, padding: "10px 12px", textAlign: "center", fontSize: 12, fontWeight: 700 }}>
@@ -168,6 +193,7 @@ export default async function PlanningPage({ searchParams }: { searchParams: { v
 
         <p style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 16 }}>
           Ce planning est géré par ton manager (ou un admin). Pour toute modification, adresse-toi à lui directement.
+          Pour demander un congé ou signaler une absence, rends-toi sur <a href="/conges" style={{ color: "var(--navy)", fontWeight: 600 }}>Congés &amp; absences</a>.
         </p>
       </main>
     );
@@ -180,14 +206,24 @@ export default async function PlanningPage({ searchParams }: { searchParams: { v
   const pDebut = `${annee}-${pad2(mois + 1)}-01`;
   const pFin = versISO(dernierJour);
 
-  const { data: occurrencesData } = await supabase.rpc("obtenir_planning", {
-    p_utilisateur_id: profil.id,
-    p_debut: pDebut,
-    p_fin: pFin,
-  });
+  const [{ data: occurrencesData }, { data: congesDataMois }] = await Promise.all([
+    supabase.rpc("obtenir_planning", { p_utilisateur_id: profil.id, p_debut: pDebut, p_fin: pFin }),
+    supabase
+      .from("conges_absences")
+      .select("*")
+      .eq("utilisateur_id", profil.id)
+      .eq("statut", "validee")
+      .is("deleted_at", null)
+      .lte("date_debut", pFin)
+      .gte("date_fin", pDebut),
+  ]);
   const occurrences = ((occurrencesData ?? []) as OccurrencePlanning[]).filter((o) => o.type === "horaire_travail");
   const parJour = new Map<string, OccurrencePlanning[]>();
   for (const o of occurrences) parJour.set(o.jour, [...(parJour.get(o.jour) ?? []), o]);
+  const congesAbsencesMois = (congesDataMois ?? []) as CongeAbsence[];
+  function congeDuJourMois(iso: string): CongeAbsence | null {
+    return congesAbsencesMois.find((c) => couvre(iso, c.date_debut, c.date_fin)) ?? null;
+  }
 
   const moisPrecedent = new Date(annee, mois - 1, 1);
   const moisSuivant = new Date(annee, mois + 1, 1);
@@ -237,6 +273,7 @@ export default async function PlanningPage({ searchParams }: { searchParams: { v
             }
             const dateStr = `${annee}-${pad2(mois + 1)}-${pad2(jourNum)}`;
             const entrees = parJour.get(dateStr) ?? [];
+            const congeMois = congeDuJourMois(dateStr);
             const estAujourdhui = estMoisCourant && aujourdhui.getDate() === jourNum;
             return (
               <div key={idx} style={{ minHeight: 88, padding: 6, borderTop: "1px solid var(--border)", borderLeft: idx % 7 !== 0 ? "1px solid var(--border)" : undefined, display: "flex", flexDirection: "column", gap: 3 }}>
@@ -256,7 +293,14 @@ export default async function PlanningPage({ searchParams }: { searchParams: { v
                 >
                   {jourNum}
                 </span>
-                {entrees.length === 0 ? (
+                {congeMois ? (
+                  <span
+                    className="badge"
+                    style={{ background: congeMois.nature === "conge" ? CONGE_COULEUR.bg : ABSENCE_COULEUR.bg, color: congeMois.nature === "conge" ? CONGE_COULEUR.fg : ABSENCE_COULEUR.fg, display: "block", textAlign: "left" }}
+                  >
+                    {NATURE_LABEL[congeMois.nature]}
+                  </span>
+                ) : entrees.length === 0 ? (
                   <span style={{ fontSize: 10, fontWeight: 600, color: REPOS_COULEUR.fg }}>OFF</span>
                 ) : (
                   entrees.map((o, i) => (
@@ -311,6 +355,8 @@ function Legende() {
     { label: "Après-midi", couleur: CATEGORIE_COULEUR.apres_midi },
     { label: "Journée", couleur: CATEGORIE_COULEUR.journee },
     { label: "Soir / Télétravail / Formation", couleur: CATEGORIE_COULEUR.soir },
+    { label: "Congé", couleur: CONGE_COULEUR },
+    { label: "Absence", couleur: ABSENCE_COULEUR },
     { label: "Repos", couleur: REPOS_COULEUR },
   ];
   return (

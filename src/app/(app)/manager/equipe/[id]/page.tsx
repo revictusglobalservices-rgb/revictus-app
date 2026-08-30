@@ -6,7 +6,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import PlanningEditor from "@/components/PlanningEditor";
-import type { OccurrencePlanning, PlanningRecurrence, PrioriteTache, StatutTache, StatutUtilisateur } from "@/types/database";
+import CongesEditor from "@/components/CongesEditor";
+import type { CongeAbsence, OccurrencePlanning, PlanningRecurrence, PrioriteTache, StatutTache, StatutUtilisateur } from "@/types/database";
 
 function dansNJours(n: number) {
   const d = new Date();
@@ -88,7 +89,7 @@ export default async function DetailCollaborateur({ params }: { params: { id: st
       .limit(5),
   ]);
 
-  const [{ data: recurrencesPlanning }, { data: occurrencesPlanning }] = await Promise.all([
+  const [{ data: recurrencesPlanning }, { data: occurrencesPlanning }, { data: congesAbsences }] = await Promise.all([
     supabase
       .from("planning_recurrences")
       .select("*")
@@ -100,6 +101,12 @@ export default async function DetailCollaborateur({ params }: { params: { id: st
       p_debut: new Date().toISOString().slice(0, 10),
       p_fin: dansNJours(60),
     }),
+    supabase
+      .from("conges_absences")
+      .select("*")
+      .eq("utilisateur_id", params.id)
+      .is("deleted_at", null)
+      .order("date_debut", { ascending: false }),
   ]);
 
   let tacheActiveTitre: string | null = null;
@@ -161,6 +168,16 @@ export default async function DetailCollaborateur({ params }: { params: { id: st
           createurId={user.id}
           recurrencesInitiales={(recurrencesPlanning ?? []) as PlanningRecurrence[]}
           occurrencesInitiales={(occurrencesPlanning ?? []) as OccurrencePlanning[]}
+        />
+      </section>
+
+      <section style={{ marginTop: 32 }}>
+        <h3 style={{ color: "var(--navy)", marginBottom: 12 }}>Congés & absences</h3>
+        <CongesEditor
+          utilisateurId={params.id}
+          entrepriseId={collaborateur.entreprise_id}
+          createurId={user.id}
+          demandesInitiales={(congesAbsences ?? []) as CongeAbsence[]}
         />
       </section>
 

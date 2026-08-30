@@ -67,6 +67,15 @@ function IconePlanningEquipe() {
     </svg>
   );
 }
+function IconeConges() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 12a8 8 0 1 1-8-8" />
+      <path d="M12 8v4l3 2" />
+      <path d="M20 4v4h-4" />
+    </svg>
+  );
+}
 
 export default function Sidebar({ nom, role }: { nom: string; role: RoleUtilisateur }) {
   const pathname = usePathname();
@@ -80,6 +89,8 @@ export default function Sidebar({ nom, role }: { nom: string; role: RoleUtilisat
     { href: "/pointage", label: "Pointage", icone: <IconePointage /> },
     { href: "/planning", label: role === "collaborateur" ? "Planning" : "Mon planning", icone: <IconePlanning /> },
     ...(role !== "collaborateur" ? [{ href: "/manager/planning", label: "Planning équipe", icone: <IconePlanningEquipe /> }] : []),
+    { href: "/conges", label: "Congés & absences", icone: <IconeConges /> },
+    ...(role !== "collaborateur" ? [{ href: "/manager/conges", label: "Congés équipe", icone: <IconePlanningEquipe /> }] : []),
     { href: "/chrono", label: "Chrono", icone: <IconeChrono /> },
     { href: "/kanban", label: "Kanban", icone: <IconeKanban /> },
     { href: "/corrections", label: "Corrections", icone: <IconeCorrections /> },

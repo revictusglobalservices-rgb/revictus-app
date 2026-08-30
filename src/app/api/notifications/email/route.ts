@@ -19,6 +19,14 @@ const SUJETS: Record<string, string> = {
   pointage_arrivee: "Pointage d'arrivée — Revictus",
   pointage_depart: "Pointage de départ — Revictus",
   planning_modifie: "Votre planning a été mis à jour — Revictus",
+  conge_demande: "Nouvelle demande de congé — Revictus",
+  absence_demande: "Nouvelle absence signalée — Revictus",
+  conge_ajoute: "Congé ajouté à votre planning — Revictus",
+  absence_ajoute: "Absence ajoutée à votre planning — Revictus",
+  conge_validee: "Congé validé — Revictus",
+  conge_refusee: "Congé refusé — Revictus",
+  absence_validee: "Absence validée — Revictus",
+  absence_refusee: "Absence refusée — Revictus",
 };
 
 export async function POST(request: Request) {

@@ -9,7 +9,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { CATEGORIE_COULEUR, CATEGORIE_LABEL, REPOS_COULEUR } from "@/lib/planningCategories";
-import type { OccurrencePlanning, Utilisateur } from "@/types/database";
+import { ABSENCE_COULEUR, CONGE_COULEUR, NATURE_LABEL, couvre } from "@/lib/congesAbsences";
+import type { CongeAbsence, OccurrencePlanning, Utilisateur } from "@/types/database";
 
 const JOURS_COURTS = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
 
@@ -70,19 +71,32 @@ export default async function PlanningEquipe({ searchParams }: { searchParams: {
 
   const planningsParMembre = await Promise.all(
     equipe.map(async (m) => {
-      const { data } = await supabase.rpc("obtenir_planning", { p_utilisateur_id: m.id, p_debut: pDebut, p_fin: pFin });
+      const [{ data }, { data: congesData }] = await Promise.all([
+        supabase.rpc("obtenir_planning", { p_utilisateur_id: m.id, p_debut: pDebut, p_fin: pFin }),
+        supabase
+          .from("conges_absences")
+          .select("*")
+          .eq("utilisateur_id", m.id)
+          .eq("statut", "validee")
+          .is("deleted_at", null)
+          .lte("date_debut", pFin)
+          .gte("date_fin", pDebut),
+      ]);
       const parJour = new Map<string, OccurrencePlanning[]>();
       for (const o of (data ?? []) as OccurrencePlanning[]) {
         if (o.type !== "horaire_travail") continue; // les événements n'ont pas leur place dans cette grille
         parJour.set(o.jour, [...(parJour.get(o.jour) ?? []), o]);
       }
-      return { membre: m, parJour };
+      return { membre: m, parJour, congesAbsences: (congesData ?? []) as CongeAbsence[] };
     })
   );
 
-  const totalHeures = planningsParMembre.reduce((acc, { parJour }) => {
+  // Un jour couvert par un congé/absence validé n'est pas compté (la personne
+  // ne travaille pas ce jour-là, même si un horaire récurrent existe dessous).
+  const totalHeures = planningsParMembre.reduce((acc, { parJour, congesAbsences }) => {
     let s = 0;
-    for (const entrees of parJour.values()) {
+    for (const [jour, entrees] of parJour.entries()) {
+      if (congesAbsences.some((c) => couvre(jour, c.date_debut, c.date_fin))) continue;
       for (const o of entrees) {
         if (!o.heure_debut || !o.heure_fin) continue;
         const [h1, m1] = o.heure_debut.split(":").map(Number);
@@ -95,11 +109,27 @@ export default async function PlanningEquipe({ searchParams }: { searchParams: {
     return acc + s;
   }, 0);
   const nbTeletravail = planningsParMembre.reduce(
-    (acc, { parJour }) => acc + [...parJour.values()].flat().filter((o) => o.categorie === "teletravail").length,
+    (acc, { parJour, congesAbsences }) =>
+      acc +
+      [...parJour.entries()].filter(([jour]) => !congesAbsences.some((c) => couvre(jour, c.date_debut, c.date_fin)))
+        .flatMap(([, entrees]) => entrees)
+        .filter((o) => o.categorie === "teletravail").length,
     0
   );
   const nbFormation = planningsParMembre.reduce(
-    (acc, { parJour }) => acc + [...parJour.values()].flat().filter((o) => o.categorie === "formation").length,
+    (acc, { parJour, congesAbsences }) =>
+      acc +
+      [...parJour.entries()].filter(([jour]) => !congesAbsences.some((c) => couvre(jour, c.date_debut, c.date_fin)))
+        .flatMap(([, entrees]) => entrees)
+        .filter((o) => o.categorie === "formation").length,
+    0
+  );
+  const nbConges = planningsParMembre.reduce(
+    (acc, { congesAbsences }) => acc + congesAbsences.filter((c) => c.nature === "conge").length,
+    0
+  );
+  const nbAbsences = planningsParMembre.reduce(
+    (acc, { congesAbsences }) => acc + congesAbsences.filter((c) => c.nature === "absence").length,
     0
   );
 
@@ -152,7 +182,7 @@ export default async function PlanningEquipe({ searchParams }: { searchParams: {
               </tr>
             </thead>
             <tbody>
-              {planningsParMembre.map(({ membre, parJour }) => (
+              {planningsParMembre.map(({ membre, parJour, congesAbsences }) => (
                 <tr key={membre.id}>
                   <td style={{ ...cellTd(), position: "sticky", left: 0, background: "var(--surface)", zIndex: 1 }}>
                     <a href={`/manager/equipe/${membre.id}`} style={{ color: "var(--navy)", fontWeight: 600, textDecoration: "none", fontSize: 13 }}>
@@ -162,9 +192,22 @@ export default async function PlanningEquipe({ searchParams }: { searchParams: {
                   {jours.map((d) => {
                     const iso = versISO(d);
                     const entrees = parJour.get(iso) ?? [];
+                    const conge = congesAbsences.find((c) => couvre(iso, c.date_debut, c.date_fin));
                     return (
                       <td key={iso} style={cellTd()}>
-                        {entrees.length === 0 ? (
+                        {conge ? (
+                          <span
+                            className="badge"
+                            style={{
+                              background: conge.nature === "conge" ? CONGE_COULEUR.bg : ABSENCE_COULEUR.bg,
+                              color: conge.nature === "conge" ? CONGE_COULEUR.fg : ABSENCE_COULEUR.fg,
+                              display: "block",
+                              textAlign: "center",
+                            }}
+                          >
+                            {NATURE_LABEL[conge.nature]}
+                          </span>
+                        ) : entrees.length === 0 ? (
                           <span
                             className="badge"
                             style={{ background: REPOS_COULEUR.bg, color: REPOS_COULEUR.fg, display: "block", textAlign: "center" }}
@@ -219,6 +262,13 @@ export default async function PlanningEquipe({ searchParams }: { searchParams: {
           <h4 style={{ margin: "0 0 4px", fontSize: 13, color: "var(--ink-2)" }}>Formation</h4>
           <p style={{ fontSize: 22, fontWeight: 700, color: "var(--navy)", margin: 0 }}>{nbFormation}</p>
           <p style={{ fontSize: 12, color: "var(--ink-2)", margin: "2px 0 0" }}>Créneau(x) cette semaine</p>
+        </div>
+        <div className="card-2">
+          <h4 style={{ margin: "0 0 4px", fontSize: 13, color: "var(--ink-2)" }}>Congés / absences</h4>
+          <p style={{ fontSize: 22, fontWeight: 700, color: "var(--navy)", margin: 0 }}>
+            {nbConges} / {nbAbsences}
+          </p>
+          <p style={{ fontSize: 12, color: "var(--ink-2)", margin: "2px 0 0" }}>En cours cette semaine — <a href="/manager/conges" style={{ color: "var(--navy)", fontWeight: 600 }}>voir les demandes</a></p>
         </div>
       </div>
 
