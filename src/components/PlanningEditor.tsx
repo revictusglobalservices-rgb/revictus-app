@@ -42,6 +42,18 @@ function labelStyle() {
   return { display: "flex", flexDirection: "column" as const, gap: 4, fontSize: 13, color: "var(--ink-2)" };
 }
 
+function raccourciBtn() {
+  return {
+    padding: "5px 9px",
+    border: "1px solid var(--border)",
+    borderRadius: 6,
+    fontSize: 12,
+    background: "transparent",
+    color: "var(--navy)",
+    cursor: "pointer",
+  } as const;
+}
+
 export default function PlanningEditor({
   utilisateurId,
   entrepriseId,
@@ -70,7 +82,11 @@ export default function PlanningEditor({
   }, [supabase, utilisateurId]);
 
   // ---- Formulaire 1 : horaire récurrent ----
-  const [rJour, setRJour] = useState(1);
+  // Plusieurs jours peuvent être cochés à la fois (ex. Lun-Ven) pour éviter
+  // de répéter la saisie quand l'horaire est identique — un enregistrement
+  // `planning_recurrences` est créé par jour coché (le modèle de données
+  // reste un jour = une ligne, seule la saisie est groupée).
+  const [rJours, setRJours] = useState<number[]>([1]);
   const [rDebut, setRDebut] = useState("08:00");
   const [rFin, setRFin] = useState("17:00");
   const [rCategorie, setRCategorie] = useState<CategoriePlanning>("matin");
@@ -85,25 +101,36 @@ export default function PlanningEditor({
     if (!rCategorieTouchee) setRCategorie(categorieParDefaut(valeur));
   }
 
+  function basculerRJour(jour: number) {
+    setRJours((prev) => (prev.includes(jour) ? prev.filter((j) => j !== jour) : [...prev, jour].sort()));
+  }
+
   async function ajouterRecurrence() {
+    if (rJours.length === 0) {
+      setErreur("Sélectionne au moins un jour.");
+      return;
+    }
     if (rFin <= rDebut) {
       setErreur("L'heure de fin doit être après l'heure de début.");
       return;
     }
     setErreur(null);
     setREnCours(true);
-    const { error } = await supabase.from("planning_recurrences").insert({
-      utilisateur_id: utilisateurId,
-      entreprise_id: entrepriseId,
-      jour_semaine: rJour,
-      heure_debut: rDebut,
-      heure_fin: rFin,
-      categorie: rCategorie,
-      libelle: rLibelle.trim() || null,
-      date_debut: rDateDebut,
-      date_fin: rDateFin || null,
-      createur_id: createurId,
-    });
+    // Un enregistrement par jour coché, mêmes heures/catégorie/libellé/dates.
+    const { error } = await supabase.from("planning_recurrences").insert(
+      rJours.map((jour) => ({
+        utilisateur_id: utilisateurId,
+        entreprise_id: entrepriseId,
+        jour_semaine: jour,
+        heure_debut: rDebut,
+        heure_fin: rFin,
+        categorie: rCategorie,
+        libelle: rLibelle.trim() || null,
+        date_debut: rDateDebut,
+        date_fin: rDateFin || null,
+        createur_id: createurId,
+      }))
+    );
     setREnCours(false);
     if (error) {
       setErreur("Impossible d'ajouter cet horaire : " + error.message);
@@ -261,17 +288,42 @@ export default function PlanningEditor({
         )}
 
         <div className="card" style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={labelStyle()}>
+            Jour(s)
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              {JOURS.map((j, i) => (
+                <label
+                  key={i}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "5px 9px",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    fontSize: 13,
+                    color: rJours.includes(i) ? "#fff" : "var(--ink-2)",
+                    background: rJours.includes(i) ? "var(--navy)" : "transparent",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input type="checkbox" checked={rJours.includes(i)} onChange={() => basculerRJour(i)} style={{ display: "none" }} />
+                  {j.slice(0, 3)}
+                </label>
+              ))}
+              <span style={{ width: 1, alignSelf: "stretch", background: "var(--border)", margin: "0 4px" }} />
+              <button type="button" onClick={() => setRJours([1, 2, 3, 4, 5])} style={raccourciBtn()}>
+                Lun–Ven
+              </button>
+              <button type="button" onClick={() => setRJours([0, 1, 2, 3, 4, 5, 6])} style={raccourciBtn()}>
+                Tous les jours
+              </button>
+              <button type="button" onClick={() => setRJours([])} style={raccourciBtn()}>
+                Aucun
+              </button>
+            </div>
+          </div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <label style={labelStyle()}>
-              Jour
-              <select value={rJour} onChange={(e) => setRJour(Number(e.target.value))} style={champStyle()}>
-                {JOURS.map((j, i) => (
-                  <option key={i} value={i}>
-                    {j}
-                  </option>
-                ))}
-              </select>
-            </label>
             <label style={labelStyle()}>
               Début
               <input type="time" value={rDebut} onChange={(e) => changerRDebut(e.target.value)} style={champStyle()} />
