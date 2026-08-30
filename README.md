@@ -110,6 +110,13 @@ dans Project Settings → Environment Variables. Correspond à la section 14 du 
   Nouvelle vue manager `/manager/planning` : grille équipe (une ligne par collaborateur,
   une colonne par jour), lecture seule — la modification reste sur la fiche détaillée de
   chaque collaborateur pour ne pas dupliquer l'éditeur.
+- Sélection multi-jours pour l'horaire récurrent (30/08/2026) : dans l'éditeur de planning,
+  le champ Jour est remplacé par des cases à cocher (+ raccourcis Lun-Ven / Tous les jours) —
+  un horaire identique sur plusieurs jours se saisit en un seul ajout, plutôt qu'un par jour.
+- Horaires de nuit (30/08/2026) : un horaire récurrent ou ponctuel peut désormais avoir une
+  heure de fin plus petite que l'heure de début (ex. 17h-01h) — ça signifie qu'il se termine
+  le lendemain (0015_planning_horaire_nuit.sql, seule contrainte restante : début ≠ fin). Le
+  calcul des heures cumulées côté `/manager/planning` gère ce passage de minuit.
 
 ## Purge automatique (soft delete, 45 jours)
 

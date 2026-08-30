@@ -87,7 +87,9 @@ export default async function PlanningEquipe({ searchParams }: { searchParams: {
         if (!o.heure_debut || !o.heure_fin) continue;
         const [h1, m1] = o.heure_debut.split(":").map(Number);
         const [h2, m2] = o.heure_fin.split(":").map(Number);
-        s += h2 * 60 + m2 - (h1 * 60 + m1);
+        let duree = h2 * 60 + m2 - (h1 * 60 + m1);
+        if (duree < 0) duree += 24 * 60; // horaire de nuit (ex. 17h-01h) : se termine le lendemain
+        s += duree;
       }
     }
     return acc + s;

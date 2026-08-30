@@ -110,12 +110,15 @@ export default function PlanningEditor({
       setErreur("Sélectionne au moins un jour.");
       return;
     }
-    if (rFin <= rDebut) {
-      setErreur("L'heure de fin doit être après l'heure de début.");
+    if (rFin === rDebut) {
+      setErreur("Les heures de début et de fin ne peuvent pas être identiques.");
       return;
     }
     setErreur(null);
     setREnCours(true);
+    // rFin < rDebut = horaire de nuit (ex. 17h-01h) : l'heure de fin tombe le
+    // lendemain du jour coché. Pas d'ambiguïté à stocker, `obtenir_planning()`
+    // affiche simplement la plage telle quelle sur le jour de début.
     // Un enregistrement par jour coché, mêmes heures/catégorie/libellé/dates.
     const { error } = await supabase.from("planning_recurrences").insert(
       rJours.map((jour) => ({
@@ -204,8 +207,8 @@ export default function PlanningEditor({
       return;
     }
 
-    if (!eTouteJournee && eFin <= eDebut) {
-      setErreur("L'heure de fin doit être après l'heure de début.");
+    if (!eTouteJournee && eFin === eDebut) {
+      setErreur("Les heures de début et de fin ne peuvent pas être identiques.");
       return;
     }
 
@@ -331,6 +334,9 @@ export default function PlanningEditor({
             <label style={labelStyle()}>
               Fin
               <input type="time" value={rFin} onChange={(e) => setRFin(e.target.value)} style={champStyle()} />
+              {rFin && rDebut && rFin < rDebut && (
+                <span style={{ fontSize: 11, color: "var(--ink-2)" }}>Se termine le lendemain</span>
+              )}
             </label>
             <label style={labelStyle()}>
               Catégorie
@@ -441,6 +447,9 @@ export default function PlanningEditor({
                   <label style={labelStyle()}>
                     Fin
                     <input type="time" value={eFin} onChange={(e) => setEFin(e.target.value)} style={champStyle()} />
+                    {eFin && eDebut && eFin < eDebut && (
+                      <span style={{ fontSize: 11, color: "var(--ink-2)" }}>Se termine le lendemain</span>
+                    )}
                   </label>
                 </div>
               )}
