@@ -92,6 +92,13 @@ dans Project Settings → Environment Variables. Correspond à la section 14 du 
 - Refonte visuelle en cours (maquette du 29/08/2026) : sidebar de navigation + groupe de
   routes `(app)` livrés (phase 1). Restylage détaillé de chaque écran (cartes, badges,
   etc.) à venir.
+- Planning / agenda par collaborateur (décision du 30/08/2026) : horaires de travail
+  récurrents (hebdo, avec exceptions par date : heure modifiée ou jour annulé sans toucher
+  au modèle général) + événements ponctuels (rendez-vous, congé...). Le collaborateur voit
+  son planning en lecture seule (`/planning`, vue mensuelle) ; seul son manager ou un admin
+  le modifie, depuis sa fiche détaillée (`/manager/equipe/[id]`). Notifié comme le pointage
+  (in-app + e-mail) à chaque création/modification. Recomposition récurrences + exceptions
+  faite côté base par `obtenir_planning()` (0013_planning.sql) — le front n'y touche pas.
 
 ## Purge automatique (soft delete, 45 jours)
 

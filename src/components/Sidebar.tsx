@@ -49,6 +49,14 @@ function IconeCorrections() {
     </svg>
   );
 }
+function IconePlanning() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="17" rx="2" />
+      <path d="M3 9h18M8 2v4M16 2v4" />
+    </svg>
+  );
+}
 
 export default function Sidebar({ nom, role }: { nom: string; role: RoleUtilisateur }) {
   const pathname = usePathname();
@@ -60,6 +68,7 @@ export default function Sidebar({ nom, role }: { nom: string; role: RoleUtilisat
   const liens = [
     { href: accueil, label: "Tableau de bord", icone: <IconeAccueil /> },
     { href: "/pointage", label: "Pointage", icone: <IconePointage /> },
+    { href: "/planning", label: "Planning", icone: <IconePlanning /> },
     { href: "/chrono", label: "Chrono", icone: <IconeChrono /> },
     { href: "/kanban", label: "Kanban", icone: <IconeKanban /> },
     { href: "/corrections", label: "Corrections", icone: <IconeCorrections /> },
@@ -137,7 +146,7 @@ export default function Sidebar({ nom, role }: { nom: string; role: RoleUtilisat
               fontSize: 12,
               fontWeight: 700,
               flexShrink: 0,
-          }}
+            }}
           >
             {nom.slice(0, 1).toUpperCase()}
           </span>

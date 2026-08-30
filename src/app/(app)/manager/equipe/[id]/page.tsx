@@ -5,7 +5,14 @@
 // renvoie simplement `null` et on redirige).
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import type { PrioriteTache, StatutTache, StatutUtilisateur } from "@/types/database";
+import PlanningEditor from "@/components/PlanningEditor";
+import type { OccurrencePlanning, PlanningRecurrence, PrioriteTache, StatutTache, StatutUtilisateur } from "@/types/database";
+
+function dansNJours(n: number) {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
 
 const STATUT_LABEL: Record<StatutTache, string> = {
   a_faire: "à faire",
@@ -81,6 +88,20 @@ export default async function DetailCollaborateur({ params }: { params: { id: st
       .limit(5),
   ]);
 
+  const [{ data: recurrencesPlanning }, { data: occurrencesPlanning }] = await Promise.all([
+    supabase
+      .from("planning_recurrences")
+      .select("*")
+      .eq("utilisateur_id", params.id)
+      .eq("actif", true)
+      .order("jour_semaine"),
+    supabase.rpc("obtenir_planning", {
+      p_utilisateur_id: params.id,
+      p_debut: new Date().toISOString().slice(0, 10),
+      p_fin: dansNJours(60),
+    }),
+  ]);
+
   let tacheActiveTitre: string | null = null;
   if (sessionActive) {
     const { data: t } = await supabase.from("taches").select("titre").eq("id", sessionActive.tache_id).single();
@@ -131,6 +152,17 @@ export default async function DetailCollaborateur({ params }: { params: { id: st
           </div>
         </section>
       </div>
+
+      <section style={{ marginTop: 32 }}>
+        <h3 style={{ color: "var(--navy)", marginBottom: 12 }}>Planning</h3>
+        <PlanningEditor
+          utilisateurId={params.id}
+          entrepriseId={collaborateur.entreprise_id}
+          createurId={user.id}
+          recurrencesInitiales={(recurrencesPlanning ?? []) as PlanningRecurrence[]}
+          occurrencesInitiales={(occurrencesPlanning ?? []) as OccurrencePlanning[]}
+        />
+      </section>
 
       <section style={{ marginTop: 32 }}>
         <h3 style={{ color: "var(--navy)", marginBottom: 12 }}>Historique de pointage (14 derniers jours)</h3>

@@ -18,6 +18,7 @@ const SUJETS: Record<string, string> = {
   tache_assignee: "Nouvelle tâche assignée — Revictus",
   pointage_arrivee: "Pointage d'arrivée — Revictus",
   pointage_depart: "Pointage de départ — Revictus",
+  planning_modifie: "Votre planning a été mis à jour — Revictus",
 };
 
 export async function POST(request: Request) {

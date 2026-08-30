@@ -14,6 +14,7 @@ export type StatutPointage = "ouvert" | "ferme";
 export type StatutCorrection = "en_attente" | "approuvee" | "refusee";
 export type TableCible = "pointages" | "sessions_temps" | "taches";
 export type CanalNotification = "in_app" | "email" | "push" | "slack_teams" | "whatsapp";
+export type TypeEntreePlanning = "horaire_travail" | "evenement";
 
 export type Utilisateur = {
   id: string;
@@ -115,6 +116,58 @@ export type NotificationRevictus = {
   created_at: string;
 };
 
+// Modèle hebdomadaire récurrent ("tous les lundis 8h-17h").
+export type PlanningRecurrence = {
+  id: string;
+  utilisateur_id: string;
+  entreprise_id: string;
+  jour_semaine: number; // 0 = dimanche … 6 = samedi (Date.prototype.getDay())
+  heure_debut: string; // "HH:MM:SS"
+  heure_fin: string;
+  libelle: string | null;
+  date_debut: string;
+  date_fin: string | null;
+  actif: boolean;
+  createur_id: string;
+  created_at: string;
+  updated_at: string;
+};
+
+// Entrée concrète : exception à une occurrence récurrente (recurrence_id
+// renseigné) ou entrée ponctuelle indépendante (recurrence_id nul).
+export type PlanningEntree = {
+  id: string;
+  utilisateur_id: string;
+  entreprise_id: string;
+  recurrence_id: string | null;
+  date: string;
+  type: TypeEntreePlanning;
+  annule: boolean;
+  toute_journee: boolean;
+  heure_debut: string | null;
+  heure_fin: string | null;
+  titre: string | null;
+  description: string | null;
+  createur_id: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+// Ligne renvoyée par obtenir_planning() — le calendrier effectif d'une
+// période, récurrences et entrées ponctuelles déjà combinées.
+export type OccurrencePlanning = {
+  jour: string;
+  heure_debut: string | null;
+  heure_fin: string | null;
+  toute_journee: boolean;
+  type: TypeEntreePlanning;
+  titre: string | null;
+  description: string | null;
+  recurrent: boolean;
+  entree_id: string | null;
+};
+
 // Placeholder minimal pour que `createClient<Database>()` compile dès maintenant.
 // À affiner (ou remplacer entièrement) avec `supabase gen types`.
 type TableDef<Row> = { Row: Row; Insert: Partial<Row>; Update: Partial<Row>; Relationships: [] };
@@ -130,6 +183,8 @@ export type Database = {
       sessions_temps: TableDef<SessionTemps>;
       corrections: TableDef<Correction>;
       notifications: TableDef<NotificationRevictus>;
+      planning_recurrences: TableDef<PlanningRecurrence>;
+      planning_entrees: TableDef<PlanningEntree>;
     };
     Views: Record<string, never>;
     Functions: {
@@ -141,6 +196,10 @@ export type Database = {
       arreter_session: { Args: { p_id: string }; Returns: SessionTemps };
       approuver_correction: { Args: { p_id: string }; Returns: Correction };
       refuser_correction: { Args: { p_id: string }; Returns: Correction };
+      obtenir_planning: {
+        Args: { p_utilisateur_id: string; p_debut: string; p_fin: string };
+        Returns: OccurrencePlanning[];
+      };
     };
     Enums: Record<string, never>;
   };
