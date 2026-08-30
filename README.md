@@ -95,10 +95,21 @@ dans Project Settings → Environment Variables. Correspond à la section 14 du 
 - Planning / agenda par collaborateur (décision du 30/08/2026) : horaires de travail
   récurrents (hebdo, avec exceptions par date : heure modifiée ou jour annulé sans toucher
   au modèle général) + événements ponctuels (rendez-vous, congé...). Le collaborateur voit
-  son planning en lecture seule (`/planning`, vue mensuelle) ; seul son manager ou un admin
-  le modifie, depuis sa fiche détaillée (`/manager/equipe/[id]`). Notifié comme le pointage
-  (in-app + e-mail) à chaque création/modification. Recomposition récurrences + exceptions
-  faite côté base par `obtenir_planning()` (0013_planning.sql) — le front n'y touche pas.
+  son planning en lecture seule ; seul son manager ou un admin le modifie, depuis sa fiche
+  détaillée (`/manager/equipe/[id]`). Notifié comme le pointage (in-app + e-mail) à chaque
+  création/modification. Recomposition récurrences + exceptions faite côté base par
+  `obtenir_planning()` (0013_planning.sql) — le front n'y touche pas.
+- Refonte visuelle du planning (maquettes du 30/08/2026, décision : relooker le planning
+  d'abord, congés/absences/événements dédiés ensuite) : chaque horaire porte désormais une
+  catégorie explicite (matin/après-midi/journée/soir/télétravail/formation —
+  `categorie_planning`, 0014_planning_categorie.sql) qui pilote la couleur d'affichage.
+  Vue collaborateur (`/planning`) en grille semaine sans axe horaire par défaut (bascule
+  vue mois conservée) — les tâches n'y apparaissent jamais, les événements ponctuels sont
+  volontairement sortis de la grille et listés à part sous "Événements à venir" (règle UX :
+  le planning répond à "quand est-ce que je travaille ?", pas "qu'est-ce qui est prévu ?").
+  Nouvelle vue manager `/manager/planning` : grille équipe (une ligne par collaborateur,
+  une colonne par jour), lecture seule — la modification reste sur la fiche détaillée de
+  chaque collaborateur pour ne pas dupliquer l'éditeur.
 
 ## Purge automatique (soft delete, 45 jours)
 

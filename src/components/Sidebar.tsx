@@ -57,6 +57,16 @@ function IconePlanning() {
     </svg>
   );
 }
+function IconePlanningEquipe() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="17" rx="2" />
+      <path d="M3 10h18" />
+      <circle cx="8" cy="15" r="1.6" />
+      <circle cx="16" cy="15" r="1.6" />
+    </svg>
+  );
+}
 
 export default function Sidebar({ nom, role }: { nom: string; role: RoleUtilisateur }) {
   const pathname = usePathname();
@@ -68,7 +78,8 @@ export default function Sidebar({ nom, role }: { nom: string; role: RoleUtilisat
   const liens = [
     { href: accueil, label: "Tableau de bord", icone: <IconeAccueil /> },
     { href: "/pointage", label: "Pointage", icone: <IconePointage /> },
-    { href: "/planning", label: "Planning", icone: <IconePlanning /> },
+    { href: "/planning", label: role === "collaborateur" ? "Planning" : "Mon planning", icone: <IconePlanning /> },
+    ...(role !== "collaborateur" ? [{ href: "/manager/planning", label: "Planning équipe", icone: <IconePlanningEquipe /> }] : []),
     { href: "/chrono", label: "Chrono", icone: <IconeChrono /> },
     { href: "/kanban", label: "Kanban", icone: <IconeKanban /> },
     { href: "/corrections", label: "Corrections", icone: <IconeCorrections /> },
@@ -76,6 +87,7 @@ export default function Sidebar({ nom, role }: { nom: string; role: RoleUtilisat
 
   function estActif(href: string) {
     if (href === accueil) return pathname === "/dashboard" || pathname === "/manager" || pathname.startsWith("/manager/equipe");
+    if (href === "/planning") return pathname === "/planning";
     return pathname.startsWith(href);
   }
 

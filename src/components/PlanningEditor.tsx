@@ -14,9 +14,11 @@
 //      (horaire one-shot ou événement libre).
 import { useCallback, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { OccurrencePlanning, PlanningRecurrence } from "@/types/database";
+import { CATEGORIE_COULEUR, CATEGORIE_LABEL, EVENEMENT_COULEUR, categorieParDefaut } from "@/lib/planningCategories";
+import type { CategoriePlanning, OccurrencePlanning, PlanningRecurrence } from "@/types/database";
 
 const JOURS = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
+const CATEGORIES = Object.keys(CATEGORIE_LABEL) as CategoriePlanning[];
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -71,10 +73,17 @@ export default function PlanningEditor({
   const [rJour, setRJour] = useState(1);
   const [rDebut, setRDebut] = useState("08:00");
   const [rFin, setRFin] = useState("17:00");
+  const [rCategorie, setRCategorie] = useState<CategoriePlanning>("matin");
+  const [rCategorieTouchee, setRCategorieTouchee] = useState(false);
   const [rLibelle, setRLibelle] = useState("");
   const [rDateDebut, setRDateDebut] = useState(todayISO());
   const [rDateFin, setRDateFin] = useState("");
   const [rEnCours, setREnCours] = useState(false);
+
+  function changerRDebut(valeur: string) {
+    setRDebut(valeur);
+    if (!rCategorieTouchee) setRCategorie(categorieParDefaut(valeur));
+  }
 
   async function ajouterRecurrence() {
     if (rFin <= rDebut) {
@@ -89,6 +98,7 @@ export default function PlanningEditor({
       jour_semaine: rJour,
       heure_debut: rDebut,
       heure_fin: rFin,
+      categorie: rCategorie,
       libelle: rLibelle.trim() || null,
       date_debut: rDateDebut,
       date_fin: rDateFin || null,
@@ -118,10 +128,17 @@ export default function PlanningEditor({
   const [eMode, setEMode] = useState<"horaire" | "evenement" | "annulation">("evenement");
   const [eDebut, setEDebut] = useState("08:00");
   const [eFin, setEFin] = useState("17:00");
+  const [eCategorie, setECategorie] = useState<CategoriePlanning>("matin");
+  const [eCategorieTouchee, setECategorieTouchee] = useState(false);
   const [eTouteJournee, setETouteJournee] = useState(false);
   const [eTitre, setETitre] = useState("");
   const [eDescription, setEDescription] = useState("");
   const [eEnCours, setEEnCours] = useState(false);
+
+  function changerEDebut(valeur: string) {
+    setEDebut(valeur);
+    if (!eCategorieTouchee) setECategorie(categorieParDefaut(valeur));
+  }
 
   function recurrenceCouvrant(dateStr: string): PlanningRecurrence | null {
     const jourSemaine = new Date(dateStr + "T00:00:00").getDay();
@@ -178,6 +195,7 @@ export default function PlanningEditor({
       toute_journee: eTouteJournee,
       heure_debut: eTouteJournee ? null : eDebut,
       heure_fin: eTouteJournee ? null : eFin,
+      categorie: eMode === "horaire" ? eCategorie : null,
       titre: eTitre.trim() || null,
       description: eDescription.trim() || null,
       createur_id: createurId,
@@ -220,7 +238,10 @@ export default function PlanningEditor({
             {recurrences.map((r) => (
               <li key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13 }}>
                 <span>
-                  {JOURS[r.jour_semaine]} {heureCourte(r.heure_debut)}–{heureCourte(r.heure_fin)}
+                  {JOURS[r.jour_semaine]} {heureCourte(r.heure_debut)}–{heureCourte(r.heure_fin)}{" "}
+                  <span className="badge" style={{ background: CATEGORIE_COULEUR[r.categorie].bg, color: CATEGORIE_COULEUR[r.categorie].fg }}>
+                    {CATEGORIE_LABEL[r.categorie]}
+                  </span>
                   {r.libelle ? ` · ${r.libelle}` : ""}
                   <span style={{ color: "var(--ink-2)" }}>
                     {" "}
@@ -253,11 +274,28 @@ export default function PlanningEditor({
             </label>
             <label style={labelStyle()}>
               Début
-              <input type="time" value={rDebut} onChange={(e) => setRDebut(e.target.value)} style={champStyle()} />
+              <input type="time" value={rDebut} onChange={(e) => changerRDebut(e.target.value)} style={champStyle()} />
             </label>
             <label style={labelStyle()}>
               Fin
               <input type="time" value={rFin} onChange={(e) => setRFin(e.target.value)} style={champStyle()} />
+            </label>
+            <label style={labelStyle()}>
+              Catégorie
+              <select
+                value={rCategorie}
+                onChange={(e) => {
+                  setRCategorie(e.target.value as CategoriePlanning);
+                  setRCategorieTouchee(true);
+                }}
+                style={champStyle()}
+              >
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {CATEGORIE_LABEL[c]}
+                  </option>
+                ))}
+              </select>
             </label>
             <label style={labelStyle()}>
               Libellé (optionnel)
@@ -298,10 +336,11 @@ export default function PlanningEditor({
                   <span
                     className="badge"
                     style={{
-                      background: o.type === "evenement" ? "var(--accent-2-bg)" : "var(--normal-bg)",
-                      color: o.type === "evenement" ? "var(--accent-2)" : "var(--normal)",
+                      background: o.type === "evenement" ? EVENEMENT_COULEUR.bg : CATEGORIE_COULEUR[o.categorie ?? "matin"].bg,
+                      color: o.type === "evenement" ? EVENEMENT_COULEUR.fg : CATEGORIE_COULEUR[o.categorie ?? "matin"].fg,
                     }}
                   >
+                    {o.type === "evenement" ? "Événement" : CATEGORIE_LABEL[o.categorie ?? "matin"]} ·{" "}
                     {o.toute_journee ? "Journée" : `${heureCourte(o.heure_debut)}–${heureCourte(o.heure_fin)}`}
                   </span>
                   {o.titre ? ` ${o.titre}` : ""}
@@ -345,13 +384,32 @@ export default function PlanningEditor({
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                   <label style={labelStyle()}>
                     Début
-                    <input type="time" value={eDebut} onChange={(e) => setEDebut(e.target.value)} style={champStyle()} />
+                    <input type="time" value={eDebut} onChange={(e) => changerEDebut(e.target.value)} style={champStyle()} />
                   </label>
                   <label style={labelStyle()}>
                     Fin
                     <input type="time" value={eFin} onChange={(e) => setEFin(e.target.value)} style={champStyle()} />
                   </label>
                 </div>
+              )}
+              {eMode === "horaire" && (
+                <label style={labelStyle()}>
+                  Catégorie
+                  <select
+                    value={eCategorie}
+                    onChange={(e) => {
+                      setECategorie(e.target.value as CategoriePlanning);
+                      setECategorieTouchee(true);
+                    }}
+                    style={champStyle()}
+                  >
+                    {CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {CATEGORIE_LABEL[c]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               )}
               <label style={labelStyle()}>
                 Titre

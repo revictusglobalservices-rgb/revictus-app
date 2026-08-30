@@ -15,6 +15,7 @@ export type StatutCorrection = "en_attente" | "approuvee" | "refusee";
 export type TableCible = "pointages" | "sessions_temps" | "taches";
 export type CanalNotification = "in_app" | "email" | "push" | "slack_teams" | "whatsapp";
 export type TypeEntreePlanning = "horaire_travail" | "evenement";
+export type CategoriePlanning = "matin" | "apres_midi" | "journee" | "soir" | "teletravail" | "formation";
 
 export type Utilisateur = {
   id: string;
@@ -125,6 +126,7 @@ export type PlanningRecurrence = {
   heure_debut: string; // "HH:MM:SS"
   heure_fin: string;
   libelle: string | null;
+  categorie: CategoriePlanning;
   date_debut: string;
   date_fin: string | null;
   actif: boolean;
@@ -146,6 +148,7 @@ export type PlanningEntree = {
   toute_journee: boolean;
   heure_debut: string | null;
   heure_fin: string | null;
+  categorie: CategoriePlanning | null; // pertinent seulement si type = 'horaire_travail'
   titre: string | null;
   description: string | null;
   createur_id: string;
@@ -162,6 +165,7 @@ export type OccurrencePlanning = {
   heure_fin: string | null;
   toute_journee: boolean;
   type: TypeEntreePlanning;
+  categorie: CategoriePlanning | null;
   titre: string | null;
   description: string | null;
   recurrent: boolean;
