@@ -70,6 +70,16 @@ export type ColonneKanban = {
   created_at: string;
 };
 
+export type Commentaire = {
+  id: string;
+  tache_id: string;
+  auteur_id: string;
+  contenu: string;
+  mentions: string[];
+  created_at: string;
+  deleted_at: string | null;
+};
+
 export type Pointage = {
   id: string;
   utilisateur_id: string;
@@ -215,6 +225,7 @@ export type Database = {
       utilisateurs: TableDef<Utilisateur>;
       taches: TableDef<Tache>;
       colonnes_kanban: TableDef<ColonneKanban>;
+      commentaires: TableDef<Commentaire>;
       pointages: TableDef<Pointage>;
       pauses: TableDef<Pause>;
       sessions_temps: TableDef<SessionTemps>;

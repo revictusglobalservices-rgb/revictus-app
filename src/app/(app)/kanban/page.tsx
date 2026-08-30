@@ -5,6 +5,7 @@
 // (policies "read accessible tasks" / "team managers manage tasks", section 12).
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import KanbanBoard from "@/components/KanbanBoard";
 
 export default async function KanbanPage() {
@@ -25,7 +26,9 @@ export default async function KanbanPage() {
   return (
     <main style={{ padding: "24px 32px" }}>
       <h1 style={{ color: "var(--navy)", margin: "0 0 24px" }}>Kanban</h1>
-      <KanbanBoard entrepriseId={profil.entreprise_id} currentUserId={profil.id} />
+      <Suspense fallback={<p style={{ color: "var(--ink-2)" }}>Chargement du tableau…</p>}>
+        <KanbanBoard entrepriseId={profil.entreprise_id} currentUserId={profil.id} role={profil.role} />
+      </Suspense>
     </main>
   );
 }

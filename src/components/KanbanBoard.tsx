@@ -2,9 +2,17 @@
 
 // Tableau Kanban — glisser-déposer entre colonnes, création rapide de tâches,
 // synchronisation temps réel via Supabase Realtime (section 8 du cadrage : latence < 10s).
-import { useEffect, useMemo, useState, useCallback } from "react";
+// Phase "panneau de tâche complet" (décision du 30/08/2026) : clic sur une carte
+// ouvre TacheDetail (description, échéance, assigné, priorité, commentaires +
+// mentions) ; assignation + échéance dès la création ; gestion des colonnes
+// réservée à l'admin via GestionColonnes ; ouverture automatique d'une tâche
+// via ?tache=<id> (lien de notification, ex. mention en commentaire).
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { ColonneKanban, PrioriteTache, Tache } from "@/types/database";
+import type { ColonneKanban, PrioriteTache, RoleUtilisateur, Tache } from "@/types/database";
+import TacheDetail from "./TacheDetail";
+import GestionColonnes from "./GestionColonnes";
 
 type Membre = { id: string; nom: string };
 
@@ -27,14 +35,22 @@ const COLONNES_DEFAUT: Array<{ nom: string; statut_lie: Tache["statut"]; ordre: 
   { nom: "Terminée", statut_lie: "terminee", ordre: 3 },
 ];
 
+function formatEcheance(iso: string) {
+  return new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+}
+
 export default function KanbanBoard({
   entrepriseId,
   currentUserId,
+  role,
 }: {
   entrepriseId: string;
   currentUserId: string;
+  role: RoleUtilisateur;
 }) {
   const supabase = useMemo(() => createClient(), []);
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [colonnes, setColonnes] = useState<ColonneKanban[]>([]);
   const [taches, setTaches] = useState<Tache[]>([]);
   const [membres, setMembres] = useState<Membre[]>([]);
@@ -43,7 +59,12 @@ export default function KanbanBoard({
   const [ajoutColonneId, setAjoutColonneId] = useState<string | null>(null);
   const [nouveauTitre, setNouveauTitre] = useState("");
   const [nouvellePriorite, setNouvellePriorite] = useState<PrioriteTache>("normal");
+  const [nouvelAssigneId, setNouvelAssigneId] = useState(currentUserId);
+  const [nouvelleEcheance, setNouvelleEcheance] = useState("");
   const [dragTacheId, setDragTacheId] = useState<string | null>(null);
+  const [tacheOuverteId, setTacheOuverteId] = useState<string | null>(null);
+  const [panneauColonnesOuvert, setPanneauColonnesOuvert] = useState(false);
+  const deepLinkTraite = useRef(false);
 
   const chargerTaches = useCallback(async () => {
     const { data, error } = await supabase
@@ -56,6 +77,11 @@ export default function KanbanBoard({
       return;
     }
     setTaches(data ?? []);
+  }, [supabase]);
+
+  const chargerColonnes = useCallback(async () => {
+    const { data, error } = await supabase.from("colonnes_kanban").select("*").order("ordre", { ascending: true });
+    if (!error) setColonnes(data ?? []);
   }, [supabase]);
 
   const chargerTout = useCallback(async () => {
@@ -116,6 +142,18 @@ export default function KanbanBoard({
     };
   }, [supabase, entrepriseId, chargerTaches]);
 
+  // Ouverture automatique d'une tâche via ?tache=<id> (lien de notification,
+  // ex. mention en commentaire) — une seule fois, pour ne pas rouvrir le
+  // panneau si l'utilisateur le ferme.
+  useEffect(() => {
+    if (deepLinkTraite.current || loading) return;
+    const idParam = searchParams.get("tache");
+    if (idParam && taches.some((t) => t.id === idParam)) {
+      setTacheOuverteId(idParam);
+      deepLinkTraite.current = true;
+    }
+  }, [searchParams, taches, loading]);
+
   const tachesParColonne = useMemo(() => {
     const map = new Map<string, Tache[]>();
     for (const col of colonnes) map.set(col.id, []);
@@ -129,6 +167,20 @@ export default function KanbanBoard({
     (id: string | null) => membres.find((m) => m.id === id)?.nom ?? null,
     [membres]
   );
+
+  const tacheOuverte = useMemo(
+    () => taches.find((t) => t.id === tacheOuverteId) ?? null,
+    [taches, tacheOuverteId]
+  );
+
+  function fermerPanneauTache() {
+    setTacheOuverteId(null);
+    if (searchParams.get("tache")) router.replace("/kanban");
+  }
+
+  function tacheMiseAJour(t: Tache) {
+    setTaches((prev) => prev.map((p) => (p.id === t.id ? t : p)));
+  }
 
   async function deposerTache(colonneCible: ColonneKanban) {
     if (!dragTacheId) return;
@@ -171,7 +223,8 @@ export default function KanbanBoard({
         statut: colonne.statut_lie,
         colonne_id: colonne.id,
         createur_id: currentUserId,
-        assigne_id: currentUserId,
+        assigne_id: nouvelAssigneId || null,
+        echeance: nouvelleEcheance ? new Date(nouvelleEcheance + "T23:59:59").toISOString() : null,
         ordre: ordreCible,
       } as never)
       .select("*")
@@ -184,6 +237,8 @@ export default function KanbanBoard({
     if (data) setTaches((prev) => [...prev, data]);
     setNouveauTitre("");
     setNouvellePriorite("normal");
+    setNouvelAssigneId(currentUserId);
+    setNouvelleEcheance("");
     setAjoutColonneId(null);
   }
 
@@ -217,6 +272,26 @@ export default function KanbanBoard({
           {erreur}
         </div>
       )}
+
+      {role === "admin" && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+          <button
+            onClick={() => setPanneauColonnesOuvert(true)}
+            style={{
+              padding: "6px 14px",
+              background: "transparent",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              color: "var(--navy)",
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            Gérer les colonnes
+          </button>
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 16, overflowX: "auto", alignItems: "flex-start" }}>
         {colonnes.map((colonne) => (
           <div
@@ -251,37 +326,55 @@ export default function KanbanBoard({
             </div>
 
             <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8, flex: 1 }}>
-              {(tachesParColonne.get(colonne.id) ?? []).map((tache) => (
-                <div
-                  key={tache.id}
-                  draggable
-                  onDragStart={() => setDragTacheId(tache.id)}
-                  style={{
-                    background: "var(--bg)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    padding: "10px 12px",
-                    cursor: "grab",
-                  }}
-                >
-                  <div style={{ fontSize: 14, marginBottom: 6 }}>{tache.titre}</div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: PRIORITE_COLOR[tache.priorite],
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      {PRIORITE_LABEL[tache.priorite]}
-                    </span>
+              {(tachesParColonne.get(colonne.id) ?? []).map((tache) => {
+                const enRetard = tache.echeance && tache.statut !== "terminee" && new Date(tache.echeance) < new Date();
+                return (
+                  <div
+                    key={tache.id}
+                    draggable
+                    onDragStart={() => setDragTacheId(tache.id)}
+                    onClick={() => setTacheOuverteId(tache.id)}
+                    className="card"
+                    style={{
+                      background: "var(--bg)",
+                      border: enRetard ? "1px solid var(--urgent)" : "1px solid var(--border)",
+                      borderRadius: 8,
+                      padding: "10px 12px",
+                      cursor: "grab",
+                    }}
+                  >
+                    <div style={{ fontSize: 14, marginBottom: 6 }}>{tache.titre}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: PRIORITE_COLOR[tache.priorite],
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {PRIORITE_LABEL[tache.priorite]}
+                      </span>
+                      {tache.echeance && (
+                        <span
+                          className="badge"
+                          style={{
+                            background: enRetard ? "var(--urgent-bg)" : "var(--bg)",
+                            color: enRetard ? "var(--urgent)" : "var(--ink-2)",
+                            border: enRetard ? "none" : "1px solid var(--border)",
+                          }}
+                        >
+                          {enRetard ? "En retard · " : ""}
+                          {formatEcheance(tache.echeance)}
+                        </span>
+                      )}
+                    </div>
                     {tache.assigne_id && (
-                      <span style={{ fontSize: 12, color: "var(--ink-2)" }}>{nomMembre(tache.assigne_id)}</span>
+                      <div style={{ fontSize: 12, color: "var(--ink-2)", marginTop: 6 }}>{nomMembre(tache.assigne_id)}</div>
                     )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {ajoutColonneId === colonne.id ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -305,6 +398,24 @@ export default function KanbanBoard({
                     <option value="important">Important</option>
                     <option value="urgent">Urgent</option>
                   </select>
+                  <select
+                    value={nouvelAssigneId}
+                    onChange={(e) => setNouvelAssigneId(e.target.value)}
+                    style={{ padding: "6px 8px", border: "1px solid var(--border)", borderRadius: 6, fontSize: 13 }}
+                  >
+                    <option value="">— Personne —</option>
+                    {membres.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.nom}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="date"
+                    value={nouvelleEcheance}
+                    onChange={(e) => setNouvelleEcheance(e.target.value)}
+                    style={{ padding: "6px 8px", border: "1px solid var(--border)", borderRadius: 6, fontSize: 13 }}
+                  />
                   <div style={{ display: "flex", gap: 6 }}>
                     <button
                       onClick={() => creerTache(colonne)}
@@ -339,6 +450,8 @@ export default function KanbanBoard({
                   onClick={() => {
                     setAjoutColonneId(colonne.id);
                     setNouveauTitre("");
+                    setNouvelAssigneId(currentUserId);
+                    setNouvelleEcheance("");
                   }}
                   style={{
                     background: "transparent",
@@ -357,6 +470,26 @@ export default function KanbanBoard({
           </div>
         ))}
       </div>
+
+      {tacheOuverte && (
+        <TacheDetail
+          tache={tacheOuverte}
+          membres={membres}
+          currentUserId={currentUserId}
+          onClose={fermerPanneauTache}
+          onUpdated={tacheMiseAJour}
+        />
+      )}
+
+      {panneauColonnesOuvert && (
+        <GestionColonnes
+          entrepriseId={entrepriseId}
+          colonnes={colonnes}
+          tachesParColonne={tachesParColonne}
+          onClose={() => setPanneauColonnesOuvert(false)}
+          onChanged={chargerColonnes}
+        />
+      )}
     </div>
   );
 }
