@@ -2,11 +2,14 @@
 
 // Panneau de détail d'une tâche Kanban (décision du 30/08/2026) : description,
 // échéance, assigné, priorité modifiables, + commentaires avec mention d'une
-// personne (chips cliquables, pas de parsing "@Nom" — voir 0017_kanban_mentions.sql).
+// personne. La mention se saisit directement dans le champ, en tapant "@" :
+// une liste de suggestions apparaît alors (façon Slack/GitHub), on choisit un
+// nom au clic ou au clavier et il s'insère dans le texte (décision du
+// 01/09/2026 — pas de boutons de tag séparés). Voir 0017_kanban_mentions.sql.
 // RLS déjà en place (0003_policies.sql) : modification si peut_acceder(assigne_id)
 // ou peut_acceder(createur_id) — donc collaborateur sur ses propres tâches,
 // manager/admin sur celles de leur périmètre.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Commentaire, PrioriteTache, StatutTache, Tache } from "@/types/database";
 
@@ -57,8 +60,12 @@ export default function TacheDetail({
   const [commentaires, setCommentaires] = useState<Commentaire[]>([]);
   const [chargementCommentaires, setChargementCommentaires] = useState(true);
   const [nouveauCommentaire, setNouveauCommentaire] = useState("");
-  const [mentionsChoisies, setMentionsChoisies] = useState<string[]>([]);
+  const [mentionsSelectionnees, setMentionsSelectionnees] = useState<{ id: string; nom: string }[]>([]);
   const [envoiCommentaire, setEnvoiCommentaire] = useState(false);
+  const [suggestionsOuvertes, setSuggestionsOuvertes] = useState(false);
+  const [suggestionRequete, setSuggestionRequete] = useState("");
+  const [suggestionIndex, setSuggestionIndex] = useState(0);
+  const commentaireRef = useRef<HTMLTextAreaElement | null>(null);
 
   const chargerCommentaires = useCallback(async () => {
     setChargementCommentaires(true);
@@ -78,10 +85,21 @@ export default function TacheDetail({
     setEcheance(toDateInputValue(tache.echeance));
     setAssigneId(tache.assigne_id ?? "");
     setPriorite(tache.priorite);
+    setNouveauCommentaire("");
+    setMentionsSelectionnees([]);
+    setSuggestionsOuvertes(false);
     chargerCommentaires();
   }, [tache, chargerCommentaires]);
 
   const nomMembre = useCallback((id: string | null) => membres.find((m) => m.id === id)?.nom ?? "—", [membres]);
+
+  const suggestionsFiltrees = useMemo(
+    () =>
+      membres.filter(
+        (m) => m.id !== currentUserId && m.nom.toLowerCase().includes(suggestionRequete.toLowerCase())
+      ),
+    [membres, currentUserId, suggestionRequete]
+  );
 
   const estEnRetard = tache.echeance && tache.statut !== "terminee" && new Date(tache.echeance) < new Date();
 
@@ -108,19 +126,71 @@ export default function TacheDetail({
     if (data) onUpdated(data);
   }
 
-  function basculerMention(id: string) {
-    setMentionsChoisies((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]));
+  // Détecte un "@" en cours de saisie (précédé d'un début de ligne ou d'un
+  // espace, suivi d'aucun espace jusqu'au curseur) pour ouvrir la liste de
+  // suggestions — la mention se tape directement dans le texte, pas de bouton.
+  function onChangeCommentaire(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const valeur = e.target.value;
+    setNouveauCommentaire(valeur);
+    const caret = e.target.selectionStart ?? valeur.length;
+    const avant = valeur.slice(0, caret);
+    const correspondance = avant.match(/(?:^|\s)@([^\s@]*)$/);
+    if (correspondance) {
+      setSuggestionRequete(correspondance[1]);
+      setSuggestionIndex(0);
+      setSuggestionsOuvertes(true);
+    } else {
+      setSuggestionsOuvertes(false);
+    }
+  }
+
+  function choisirMention(membre: Membre) {
+    const el = commentaireRef.current;
+    const caret = el ? el.selectionStart ?? nouveauCommentaire.length : nouveauCommentaire.length;
+    const avant = nouveauCommentaire.slice(0, caret);
+    const apres = nouveauCommentaire.slice(caret);
+    const avantComplete = avant.replace(/@([^\s@]*)$/, "@" + membre.nom + " ");
+    const texte = avantComplete + apres;
+    setNouveauCommentaire(texte);
+    setMentionsSelectionnees((prev) => (prev.some((m) => m.id === membre.id) ? prev : [...prev, membre]));
+    setSuggestionsOuvertes(false);
+    setSuggestionRequete("");
+    requestAnimationFrame(() => {
+      if (!el) return;
+      const position = avantComplete.length;
+      el.focus();
+      el.setSelectionRange(position, position);
+    });
+  }
+
+  function onKeyDownCommentaire(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (!suggestionsOuvertes || suggestionsFiltrees.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSuggestionIndex((i) => (i + 1) % suggestionsFiltrees.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSuggestionIndex((i) => (i - 1 + suggestionsFiltrees.length) % suggestionsFiltrees.length);
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      choisirMention(suggestionsFiltrees[suggestionIndex] ?? suggestionsFiltrees[0]);
+    } else if (e.key === "Escape") {
+      setSuggestionsOuvertes(false);
+    }
   }
 
   async function envoyerCommentaire() {
     const contenu = nouveauCommentaire.trim();
     if (!contenu) return;
+    // Ne notifie que les personnes dont la mention est encore présente dans le
+    // texte final (si le nom a été effacé après sélection, pas de notification).
+    const mentions = mentionsSelectionnees.filter((m) => contenu.includes("@" + m.nom)).map((m) => m.id);
     setEnvoiCommentaire(true);
     const { error } = await supabase.from("commentaires").insert({
       tache_id: tache.id,
       auteur_id: currentUserId,
       contenu,
-      mentions: mentionsChoisies,
+      mentions,
     } as never);
     setEnvoiCommentaire(false);
     if (error) {
@@ -128,7 +198,8 @@ export default function TacheDetail({
       return;
     }
     setNouveauCommentaire("");
-    setMentionsChoisies([]);
+    setMentionsSelectionnees([]);
+    setSuggestionsOuvertes(false);
     await chargerCommentaires();
   }
 
@@ -233,37 +304,58 @@ export default function TacheDetail({
             </div>
           )}
 
-          <textarea
-            value={nouveauCommentaire}
-            onChange={(e) => setNouveauCommentaire(e.target.value)}
-            placeholder="Écrire un commentaire…"
-            rows={2}
-            style={{ ...champStyle(), resize: "vertical" }}
-          />
-          <div>
-            <span style={{ fontSize: 12, color: "var(--ink-2)" }}>Taguer :</span>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-              {membres
-                .filter((m) => m.id !== currentUserId)
-                .map((m) => (
+          <div style={{ position: "relative" }}>
+            <textarea
+              ref={commentaireRef}
+              value={nouveauCommentaire}
+              onChange={onChangeCommentaire}
+              onKeyDown={onKeyDownCommentaire}
+              onBlur={() => window.setTimeout(() => setSuggestionsOuvertes(false), 150)}
+              placeholder="Écrire un commentaire… (@ pour taguer quelqu'un)"
+              rows={2}
+              style={{ ...champStyle(), resize: "vertical" }}
+            />
+            {suggestionsOuvertes && suggestionsFiltrees.length > 0 && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: 0,
+                  marginTop: 4,
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  boxShadow: "var(--card-shadow)",
+                  overflow: "hidden",
+                  minWidth: 180,
+                  zIndex: 5,
+                }}
+              >
+                {suggestionsFiltrees.map((m, idx) => (
                   <button
                     key={m.id}
                     type="button"
-                    onClick={() => basculerMention(m.id)}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      choisirMention(m);
+                    }}
                     style={{
-                      padding: "3px 10px",
-                      borderRadius: 999,
-                      border: "1px solid var(--border)",
-                      fontSize: 11,
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "6px 10px",
+                      border: "none",
+                      background: idx === suggestionIndex ? "var(--bg)" : "transparent",
+                      color: "var(--ink)",
+                      fontSize: 13,
                       cursor: "pointer",
-                      background: mentionsChoisies.includes(m.id) ? "var(--navy)" : "transparent",
-                      color: mentionsChoisies.includes(m.id) ? "#fff" : "var(--ink-2)",
                     }}
                   >
                     @{m.nom}
                   </button>
                 ))}
-            </div>
+              </div>
+            )}
           </div>
           <button
             onClick={envoyerCommentaire}
