@@ -28,21 +28,31 @@ export default async function DashboardManager() {
 
   const maintenant = new Date().toISOString();
 
-  const [{ data: profil }, { data: equipe }, { data: enRetard }, { data: tachesGlobales }, { data: corrections }] =
-    await Promise.all([
-      supabase.from("utilisateurs").select("nom").eq("id", user.id).single(),
-      supabase.from("utilisateurs").select("id, nom, statut").eq("manager_id", user.id),
-      supabase
-        .from("taches")
-        .select("id, titre, echeance")
-        .lt("echeance", maintenant)
-        .neq("statut", "terminee")
-        .is("deleted_at", null)
-        .order("echeance", { ascending: true })
-        .limit(5),
-      supabase.from("taches").select("statut").is("deleted_at", null),
-      supabase.from("corrections").select("id").eq("statut", "en_attente"),
-    ]);
+  // Rôle d'abord : un admin voit toute l'entreprise (pas seulement ses
+  // propres rattachements directs), comme sur /manager/conges et
+  // /manager/planning — décision du 03/09/2026, pour qu'Angelo (admin)
+  // puisse couvrir l'équipe de Larissa (manager) en son absence, avec les
+  // mêmes informations qu'elle sur cette page.
+  const { data: profil } = await supabase.from("utilisateurs").select("nom, role, entreprise_id").eq("id", user.id).single();
+
+  const requeteEquipe =
+    profil?.role === "admin"
+      ? supabase.from("utilisateurs").select("id, nom, statut").eq("entreprise_id", profil.entreprise_id).is("deleted_at", null)
+      : supabase.from("utilisateurs").select("id, nom, statut").eq("manager_id", user.id).is("deleted_at", null);
+
+  const [{ data: equipe }, { data: enRetard }, { data: tachesGlobales }, { data: corrections }] = await Promise.all([
+    requeteEquipe,
+    supabase
+      .from("taches")
+      .select("id, titre, echeance")
+      .lt("echeance", maintenant)
+      .neq("statut", "terminee")
+      .is("deleted_at", null)
+      .order("echeance", { ascending: true })
+      .limit(5),
+    supabase.from("taches").select("statut").is("deleted_at", null),
+    supabase.from("corrections").select("id").eq("statut", "en_attente"),
+  ]);
 
   const compteursStatut: Record<StatutTache, number> = { a_faire: 0, en_cours: 0, en_attente: 0, terminee: 0 };
   for (const t of tachesGlobales ?? []) compteursStatut[t.statut]++;
