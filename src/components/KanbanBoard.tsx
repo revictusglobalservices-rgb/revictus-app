@@ -261,6 +261,12 @@ export default function KanbanBoard({
     setTaches((prev) => prev.map((p) => (p.id === t.id ? t : p)));
   }
 
+  function tacheSupprimee(id: string) {
+    setTaches((prev) => prev.filter((t) => t.id !== id));
+    setTacheOuverteId(null);
+    if (searchParams.get("tache")) router.replace("/kanban");
+  }
+
   async function deposerTache(colonneCible: ColonneKanban) {
     if (!dragTacheId) return;
     const tache = taches.find((t) => t.id === dragTacheId);
@@ -605,6 +611,7 @@ export default function KanbanBoard({
           currentUserId={currentUserId}
           onClose={fermerPanneauTache}
           onUpdated={tacheMiseAJour}
+          onDeleted={tacheSupprimee}
         />
       )}
 

@@ -57,12 +57,14 @@ export default function TacheDetail({
   currentUserId,
   onClose,
   onUpdated,
+  onDeleted,
 }: {
   tache: Tache;
   membres: Membre[];
   currentUserId: string;
   onClose: () => void;
   onUpdated: (t: Tache) => void;
+  onDeleted: (id: string) => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [titre, setTitre] = useState(tache.titre);
@@ -71,6 +73,7 @@ export default function TacheDetail({
   const [assigneId, setAssigneId] = useState(tache.assigne_id ?? "");
   const [priorite, setPriorite] = useState<PrioriteTache>(tache.priorite);
   const [enregistrement, setEnregistrement] = useState(false);
+  const [suppression, setSuppression] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
 
   const [commentaires, setCommentaires] = useState<Commentaire[]>([]);
@@ -181,6 +184,27 @@ export default function TacheDetail({
       return;
     }
     if (data) onUpdated(data);
+  }
+
+  // Suppression (soft delete, comme le reste de l'app — voir
+  // 0007_purge_soft_delete.sql : purge définitive après 45 jours). Autorisée
+  // par la même règle RLS que la modification (0018_kanban_espace.sql) :
+  // tout le monde en espace partagé, propriétaire/manager/admin en espace
+  // personnel — en cas de refus, l'erreur s'affiche comme pour "Enregistrer".
+  async function supprimerTache() {
+    if (!window.confirm(`Supprimer la tâche « ${tache.titre} » ?`)) return;
+    setErreur(null);
+    setSuppression(true);
+    const { error } = await supabase
+      .from("taches")
+      .update({ deleted_at: new Date().toISOString() } as never)
+      .eq("id", tache.id);
+    setSuppression(false);
+    if (error) {
+      setErreur("Impossible de supprimer la tâche : " + error.message);
+      return;
+    }
+    onDeleted(tache.id);
   }
 
   async function televerserFichiers(fichiers: FileList | null) {
@@ -401,13 +425,22 @@ export default function TacheDetail({
           </select>
         </label>
 
-        <button
-          onClick={enregistrer}
-          disabled={enregistrement}
-          style={{ alignSelf: "flex-start", padding: "7px 16px", background: "var(--navy)", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, cursor: enregistrement ? "default" : "pointer", opacity: enregistrement ? 0.6 : 1 }}
-        >
-          Enregistrer
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={enregistrer}
+            disabled={enregistrement}
+            style={{ padding: "7px 16px", background: "var(--navy)", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, cursor: enregistrement ? "default" : "pointer", opacity: enregistrement ? 0.6 : 1 }}
+          >
+            Enregistrer
+          </button>
+          <button
+            onClick={supprimerTache}
+            disabled={suppression}
+            style={{ padding: "7px 16px", background: "transparent", color: "var(--urgent)", border: "1px solid var(--urgent)", borderRadius: 8, fontSize: 13, cursor: suppression ? "default" : "pointer", opacity: suppression ? 0.6 : 1 }}
+          >
+            {suppression ? "Suppression…" : "Supprimer la tâche"}
+          </button>
+        </div>
 
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
