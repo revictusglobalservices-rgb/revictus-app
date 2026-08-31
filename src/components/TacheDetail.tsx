@@ -6,12 +6,17 @@
 // une liste de suggestions apparaît alors (façon Slack/GitHub), on choisit un
 // nom au clic ou au clavier et il s'insère dans le texte (décision du
 // 01/09/2026 — pas de boutons de tag séparés). Voir 0017_kanban_mentions.sql.
-// RLS déjà en place (0003_policies.sql) : modification si peut_acceder(assigne_id)
-// ou peut_acceder(createur_id) — donc collaborateur sur ses propres tâches,
-// manager/admin sur celles de leur périmètre.
+// Pièces jointes (02/09/2026) : bucket privé "taches-pieces-jointes" (15 Mo
+// max/fichier) + table pieces_jointes, voir 0019_kanban_pieces_jointes.sql —
+// suppression immédiate (pas de corbeille), téléchargement via URL signée
+// (bucket privé, pas d'URL publique).
+// RLS déjà en place (0003_policies.sql, 0018/0019) : modification si
+// peut_acceder(assigne_id) ou peut_acceder(createur_id), ou tâche en espace
+// partagé — donc collaborateur sur ses propres tâches, manager/admin sur
+// celles de leur périmètre, tout le monde sur l'espace partagé.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Commentaire, PrioriteTache, StatutTache, Tache } from "@/types/database";
+import type { Commentaire, PieceJointe, PrioriteTache, StatutTache, Tache } from "@/types/database";
 
 type Membre = { id: string; nom: string };
 
@@ -21,6 +26,9 @@ const PRIORITE_COLOR: Record<PrioriteTache, string> = {
   important: "var(--important)",
   normal: "var(--normal)",
 };
+
+const BUCKET_PIECES_JOINTES = "taches-pieces-jointes";
+const TAILLE_MAX_OCTETS = 15 * 1024 * 1024; // 15 Mo, aligné sur file_size_limit du bucket.
 
 function champStyle() {
   return { padding: "6px 8px", border: "1px solid var(--border)", borderRadius: 6, fontSize: 14, width: "100%" };
@@ -33,6 +41,11 @@ function formatDateTime(iso: string) {
 }
 function toDateInputValue(iso: string | null) {
   return iso ? iso.slice(0, 10) : "";
+}
+function formatTaille(octets: number) {
+  if (octets < 1024) return `${octets} o`;
+  if (octets < 1024 * 1024) return `${(octets / 1024).toFixed(0)} Ko`;
+  return `${(octets / (1024 * 1024)).toFixed(1)} Mo`;
 }
 
 export default function TacheDetail({
@@ -67,6 +80,11 @@ export default function TacheDetail({
   const [suggestionIndex, setSuggestionIndex] = useState(0);
   const commentaireRef = useRef<HTMLTextAreaElement | null>(null);
 
+  const [piecesJointes, setPiecesJointes] = useState<PieceJointe[]>([]);
+  const [chargementPieces, setChargementPieces] = useState(true);
+  const [televersementEnCours, setTeleversementEnCours] = useState(false);
+  const fichierRef = useRef<HTMLInputElement | null>(null);
+
   const chargerCommentaires = useCallback(async () => {
     setChargementCommentaires(true);
     const { data } = await supabase
@@ -79,6 +97,17 @@ export default function TacheDetail({
     setChargementCommentaires(false);
   }, [supabase, tache.id]);
 
+  const chargerPiecesJointes = useCallback(async () => {
+    setChargementPieces(true);
+    const { data } = await supabase
+      .from("pieces_jointes")
+      .select("*")
+      .eq("tache_id", tache.id)
+      .order("created_at", { ascending: true });
+    setPiecesJointes((data ?? []) as PieceJointe[]);
+    setChargementPieces(false);
+  }, [supabase, tache.id]);
+
   useEffect(() => {
     setTitre(tache.titre);
     setDescription(tache.description ?? "");
@@ -89,7 +118,8 @@ export default function TacheDetail({
     setMentionsSelectionnees([]);
     setSuggestionsOuvertes(false);
     chargerCommentaires();
-  }, [tache, chargerCommentaires]);
+    chargerPiecesJointes();
+  }, [tache, chargerCommentaires, chargerPiecesJointes]);
 
   const nomMembre = useCallback((id: string | null) => membres.find((m) => m.id === id)?.nom ?? "—", [membres]);
 
@@ -124,6 +154,63 @@ export default function TacheDetail({
       return;
     }
     if (data) onUpdated(data);
+  }
+
+  async function televerserFichiers(fichiers: FileList | null) {
+    if (!fichiers || fichiers.length === 0) return;
+    setErreur(null);
+    setTeleversementEnCours(true);
+    for (const fichier of Array.from(fichiers)) {
+      if (fichier.size > TAILLE_MAX_OCTETS) {
+        setErreur(`« ${fichier.name} » dépasse 15 Mo — pas envoyé.`);
+        continue;
+      }
+      const chemin = `${tache.id}/${crypto.randomUUID()}-${fichier.name}`;
+      const { error: erreurEnvoi } = await supabase.storage.from(BUCKET_PIECES_JOINTES).upload(chemin, fichier);
+      if (erreurEnvoi) {
+        setErreur(`Impossible d'envoyer « ${fichier.name} » : ${erreurEnvoi.message}`);
+        continue;
+      }
+      const { error: erreurLigne } = await supabase.from("pieces_jointes").insert({
+        tache_id: tache.id,
+        chemin_stockage: chemin,
+        nom_fichier: fichier.name,
+        taille_octets: fichier.size,
+        type_mime: fichier.type || null,
+        auteur_id: currentUserId,
+      } as never);
+      if (erreurLigne) {
+        setErreur(`Impossible d'enregistrer « ${fichier.name} » : ${erreurLigne.message}`);
+      }
+    }
+    setTeleversementEnCours(false);
+    if (fichierRef.current) fichierRef.current.value = "";
+    await chargerPiecesJointes();
+  }
+
+  async function telechargerPieceJointe(p: PieceJointe) {
+    const { data, error } = await supabase.storage.from(BUCKET_PIECES_JOINTES).createSignedUrl(p.chemin_stockage, 60);
+    if (error || !data) {
+      setErreur("Impossible de générer le lien de téléchargement : " + (error?.message ?? ""));
+      return;
+    }
+    window.open(data.signedUrl, "_blank");
+  }
+
+  async function supprimerPieceJointe(p: PieceJointe) {
+    if (!window.confirm(`Supprimer « ${p.nom_fichier} » ?`)) return;
+    setErreur(null);
+    const { error: erreurStockage } = await supabase.storage.from(BUCKET_PIECES_JOINTES).remove([p.chemin_stockage]);
+    if (erreurStockage) {
+      setErreur("Impossible de supprimer le fichier : " + erreurStockage.message);
+      return;
+    }
+    const { error: erreurLigne } = await supabase.from("pieces_jointes").delete().eq("id", p.id);
+    if (erreurLigne) {
+      setErreur("Impossible de supprimer la pièce jointe : " + erreurLigne.message);
+      return;
+    }
+    await chargerPiecesJointes();
   }
 
   // Détecte un "@" en cours de saisie (précédé d'un début de ligne ou d'un
@@ -277,6 +364,81 @@ export default function TacheDetail({
         >
           Enregistrer
         </button>
+
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h4 style={{ margin: 0, fontSize: 14, color: "var(--navy)" }}>Pièces jointes</h4>
+            <label
+              style={{
+                fontSize: 12,
+                color: "var(--navy)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                padding: "4px 10px",
+                cursor: televersementEnCours ? "default" : "pointer",
+                opacity: televersementEnCours ? 0.6 : 1,
+              }}
+            >
+              {televersementEnCours ? "Envoi…" : "+ Ajouter"}
+              <input
+                ref={fichierRef}
+                type="file"
+                multiple
+                disabled={televersementEnCours}
+                onChange={(e) => televerserFichiers(e.target.files)}
+                style={{ display: "none" }}
+              />
+            </label>
+          </div>
+
+          {chargementPieces ? (
+            <p style={{ fontSize: 13, color: "var(--ink-2)", margin: 0 }}>Chargement…</p>
+          ) : piecesJointes.length === 0 ? (
+            <p style={{ fontSize: 13, color: "var(--ink-2)", margin: 0 }}>Aucune pièce jointe.</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {piecesJointes.map((p) => (
+                <div
+                  key={p.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 8,
+                    background: "var(--bg)",
+                    borderRadius: 8,
+                    padding: "6px 10px",
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {p.nom_fichier}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--ink-2)" }}>
+                      {formatTaille(p.taille_octets)} · {nomMembre(p.auteur_id)} · {formatDateTime(p.created_at)}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      onClick={() => telechargerPieceJointe(p)}
+                      style={{ background: "transparent", border: "none", color: "var(--accent-2)", cursor: "pointer", fontSize: 12 }}
+                    >
+                      Télécharger
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => supprimerPieceJointe(p)}
+                      style={{ background: "transparent", border: "none", color: "var(--urgent)", cursor: "pointer", fontSize: 12 }}
+                    >
+                      Supprimer
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>
           <h4 style={{ margin: 0, fontSize: 14, color: "var(--navy)" }}>Commentaires</h4>

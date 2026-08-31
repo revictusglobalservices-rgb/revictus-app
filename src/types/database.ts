@@ -84,6 +84,19 @@ export type Commentaire = {
   deleted_at: string | null;
 };
 
+// Pas de soft delete ici (contrairement au reste de l'app) : un fichier
+// supprimé libère tout de suite le stockage (0019_kanban_pieces_jointes.sql).
+export type PieceJointe = {
+  id: string;
+  tache_id: string;
+  chemin_stockage: string;
+  nom_fichier: string;
+  taille_octets: number;
+  type_mime: string | null;
+  auteur_id: string;
+  created_at: string;
+};
+
 export type Pointage = {
   id: string;
   utilisateur_id: string;
@@ -230,6 +243,7 @@ export type Database = {
       taches: TableDef<Tache>;
       colonnes_kanban: TableDef<ColonneKanban>;
       commentaires: TableDef<Commentaire>;
+      pieces_jointes: TableDef<PieceJointe>;
       pointages: TableDef<Pointage>;
       pauses: TableDef<Pause>;
       sessions_temps: TableDef<SessionTemps>;
