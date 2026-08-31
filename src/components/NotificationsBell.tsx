@@ -4,7 +4,7 @@
 // triggers (voir 0008_notifications.sql) sur les demandes/statuts de
 // correction et les tâches assignées. Les canaux e-mail/push/Slack-Teams/
 // WhatsApp restent à brancher plus tard (voir README).
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { NotificationRevictus } from "@/types/database";
@@ -25,6 +25,66 @@ export default function NotificationsBell({ currentUserId }: { currentUserId: st
   const router = useRouter();
   const [notifications, setNotifications] = useState<NotificationRevictus[]>([]);
   const [ouvert, setOuvert] = useState(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  // Les navigateurs bloquent l'audio tant qu'aucune interaction utilisateur
+  // n'a eu lieu sur la page : on prépare/débloque le contexte audio dès le
+  // premier clic ou touche pressée, pour qu'il soit prêt le moment venu (une
+  // notification peut arriver bien avant qu'on interagisse avec la cloche
+  // elle-même).
+  useEffect(() => {
+    const debloquerAudio = () => {
+      try {
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioCtx) return;
+        if (!audioCtxRef.current) audioCtxRef.current = new AudioCtx();
+        if (audioCtxRef.current.state === "suspended") audioCtxRef.current.resume();
+      } catch {
+        // Pas grave : le son ne jouera simplement pas.
+      }
+    };
+    window.addEventListener("pointerdown", debloquerAudio, { once: true });
+    window.addEventListener("keydown", debloquerAudio, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", debloquerAudio);
+      window.removeEventListener("keydown", debloquerAudio);
+    };
+  }, []);
+
+  // Petit carillon synthétisé (deux notes qui se chevauchent) — pas de
+  // fichier audio à héberger, joue instantanément à l'arrivée d'une
+  // notification.
+  const jouerSonCloche = useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioCtx();
+      const ctx = audioCtxRef.current;
+      if (ctx.state === "suspended") ctx.resume();
+
+      const maintenant = ctx.currentTime;
+      const notes = [
+        { freq: 1046.5, debut: 0, duree: 0.35 },
+        { freq: 1318.5, debut: 0.08, duree: 0.4 },
+      ];
+      notes.forEach(({ freq, debut, duree }) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0, maintenant + debut);
+        gain.gain.linearRampToValueAtTime(0.18, maintenant + debut + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, maintenant + debut + duree);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(maintenant + debut);
+        osc.stop(maintenant + debut + duree + 0.05);
+      });
+    } catch {
+      // Pas grave si le son échoue (politique autoplay, navigateur non
+      // compatible…) — la notification reste visible dans la cloche.
+    }
+  }, []);
 
   const charger = useCallback(async () => {
     const { data } = await supabase
@@ -66,7 +126,13 @@ export default function NotificationsBell({ currentUserId }: { currentUserId: st
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "notifications", filter: `destinataire_id=eq.${currentUserId}` },
-          () => charger()
+          (payload) => {
+            charger();
+            // Le son ne joue que pour une nouvelle notification (pas pour
+            // un "marquer comme lu" fait ailleurs, qui remonte aussi ici en
+            // UPDATE).
+            if (payload.eventType === "INSERT") jouerSonCloche();
+          }
         )
         .subscribe();
     })();
@@ -86,7 +152,7 @@ export default function NotificationsBell({ currentUserId }: { currentUserId: st
       subscription.unsubscribe();
       if (channel) supabase.removeChannel(channel);
     };
-  }, [supabase, currentUserId, charger]);
+  }, [supabase, currentUserId, charger, jouerSonCloche]);
 
   const nonLues = notifications.filter((n) => !n.lu);
 
