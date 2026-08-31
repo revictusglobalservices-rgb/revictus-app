@@ -9,7 +9,10 @@
 // Pièces jointes (02/09/2026) : bucket privé "taches-pieces-jointes" (15 Mo
 // max/fichier) + table pieces_jointes, voir 0019_kanban_pieces_jointes.sql —
 // suppression immédiate (pas de corbeille), téléchargement via URL signée
-// (bucket privé, pas d'URL publique).
+// (bucket privé, pas d'URL publique). Les images ont une vraie miniature dans
+// la liste (pas juste un nom de fichier) et un clic sur une pièce jointe
+// ouvre un aperçu dans une fenêtre modale (image ou PDF affiché directement,
+// pas de nouvel onglet) — décision du 02/09/2026, suite au retour d'Angelo.
 // RLS déjà en place (0003_policies.sql, 0018/0019) : modification si
 // peut_acceder(assigne_id) ou peut_acceder(createur_id), ou tâche en espace
 // partagé — donc collaborateur sur ses propres tâches, manager/admin sur
@@ -83,6 +86,10 @@ export default function TacheDetail({
   const [piecesJointes, setPiecesJointes] = useState<PieceJointe[]>([]);
   const [chargementPieces, setChargementPieces] = useState(true);
   const [televersementEnCours, setTeleversementEnCours] = useState(false);
+  const [urlsMiniature, setUrlsMiniature] = useState<Record<string, string>>({});
+  const [apercu, setApercu] = useState<PieceJointe | null>(null);
+  const [apercuUrl, setApercuUrl] = useState<string | null>(null);
+  const [chargementApercu, setChargementApercu] = useState(false);
   const fichierRef = useRef<HTMLInputElement | null>(null);
 
   const chargerCommentaires = useCallback(async () => {
@@ -104,8 +111,26 @@ export default function TacheDetail({
       .select("*")
       .eq("tache_id", tache.id)
       .order("created_at", { ascending: true });
-    setPiecesJointes((data ?? []) as PieceJointe[]);
+    const pieces = (data ?? []) as PieceJointe[];
+    setPiecesJointes(pieces);
     setChargementPieces(false);
+
+    // Miniatures : uniquement pour les images, une seule requête groupée
+    // (createSignedUrls) plutôt qu'un appel par fichier.
+    const images = pieces.filter((p) => p.type_mime?.startsWith("image/"));
+    if (images.length === 0) {
+      setUrlsMiniature({});
+      return;
+    }
+    const { data: signees } = await supabase.storage
+      .from(BUCKET_PIECES_JOINTES)
+      .createSignedUrls(images.map((p) => p.chemin_stockage), 3600);
+    const urls: Record<string, string> = {};
+    images.forEach((p, idx) => {
+      const url = signees?.[idx]?.signedUrl;
+      if (url) urls[p.id] = url;
+    });
+    setUrlsMiniature(urls);
   }, [supabase, tache.id]);
 
   useEffect(() => {
@@ -117,6 +142,8 @@ export default function TacheDetail({
     setNouveauCommentaire("");
     setMentionsSelectionnees([]);
     setSuggestionsOuvertes(false);
+    setApercu(null);
+    setApercuUrl(null);
     chargerCommentaires();
     chargerPiecesJointes();
   }, [tache, chargerCommentaires, chargerPiecesJointes]);
@@ -195,6 +222,22 @@ export default function TacheDetail({
       return;
     }
     window.open(data.signedUrl, "_blank");
+  }
+
+  async function ouvrirApercu(p: PieceJointe) {
+    setApercu(p);
+    setApercuUrl(null);
+    const estPrevisualisable = p.type_mime?.startsWith("image/") || p.type_mime === "application/pdf";
+    if (!estPrevisualisable) return;
+    setChargementApercu(true);
+    const { data, error } = await supabase.storage.from(BUCKET_PIECES_JOINTES).createSignedUrl(p.chemin_stockage, 300);
+    setChargementApercu(false);
+    if (!error && data) setApercuUrl(data.signedUrl);
+  }
+
+  function fermerApercu() {
+    setApercu(null);
+    setApercuUrl(null);
   }
 
   async function supprimerPieceJointe(p: PieceJointe) {
@@ -291,6 +334,7 @@ export default function TacheDetail({
   }
 
   return (
+    <>
     <div
       style={{ position: "fixed", inset: 0, background: "rgba(15, 27, 46, 0.35)", zIndex: 50, display: "flex", justifyContent: "flex-end" }}
       onClick={onClose}
@@ -410,12 +454,42 @@ export default function TacheDetail({
                     padding: "6px 10px",
                   }}
                 >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {p.nom_fichier}
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--ink-2)" }}>
-                      {formatTaille(p.taille_octets)} · {nomMembre(p.auteur_id)} · {formatDateTime(p.created_at)}
+                  <div
+                    onClick={() => ouvrirApercu(p)}
+                    style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, cursor: "pointer", flex: 1 }}
+                  >
+                    {urlsMiniature[p.id] ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={urlsMiniature[p.id]}
+                        alt=""
+                        style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 6, flexShrink: 0 }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 6,
+                          background: "var(--surface)",
+                          border: "1px solid var(--border)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 16,
+                          flexShrink: 0,
+                        }}
+                      >
+                        📄
+                      </div>
+                    )}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {p.nom_fichier}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--ink-2)" }}>
+                        {formatTaille(p.taille_octets)} · {nomMembre(p.auteur_id)} · {formatDateTime(p.created_at)}
+                      </div>
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
@@ -529,5 +603,88 @@ export default function TacheDetail({
         </div>
       </div>
     </div>
+
+    {apercu && (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(15, 27, 46, 0.7)",
+          zIndex: 60,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}
+        onClick={fermerApercu}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            background: "var(--surface)",
+            borderRadius: 12,
+            maxWidth: "90vw",
+            maxHeight: "90vh",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+              padding: "10px 16px",
+              borderBottom: "1px solid var(--border)",
+            }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {apercu.nom_fichier}
+            </span>
+            <div style={{ display: "flex", gap: 12, alignItems: "center", flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={() => telechargerPieceJointe(apercu)}
+                style={{ background: "transparent", border: "none", color: "var(--accent-2)", cursor: "pointer", fontSize: 12 }}
+              >
+                Télécharger
+              </button>
+              <button
+                type="button"
+                onClick={fermerApercu}
+                style={{ background: "transparent", border: "none", fontSize: 18, cursor: "pointer", color: "var(--ink-2)" }}
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+          <div
+            style={{
+              padding: chargementApercu || !apercuUrl ? 32 : 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              overflow: "auto",
+            }}
+          >
+            {chargementApercu ? (
+              <p style={{ fontSize: 13, color: "var(--ink-2)", margin: 0 }}>Chargement de l&apos;aperçu…</p>
+            ) : apercu.type_mime?.startsWith("image/") && apercuUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={apercuUrl} alt={apercu.nom_fichier} style={{ maxWidth: "88vw", maxHeight: "80vh", display: "block" }} />
+            ) : apercu.type_mime === "application/pdf" && apercuUrl ? (
+              <iframe src={apercuUrl} title={apercu.nom_fichier} style={{ width: "85vw", height: "80vh", border: "none" }} />
+            ) : (
+              <p style={{ fontSize: 13, color: "var(--ink-2)", margin: 0, maxWidth: 320, textAlign: "center" }}>
+                Aperçu non disponible pour ce type de fichier — utilise « Télécharger ».
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

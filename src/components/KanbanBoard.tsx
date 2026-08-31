@@ -13,6 +13,9 @@
 // tâches (assigné/créateur/manager/admin), comportement historique inchangé.
 // Le filtrage de visibilité est fait côté RLS (0018_kanban_espace.sql) ; le
 // front ne fait que trier l'ensemble déjà reçu par `espace` pour l'affichage.
+// Miniature de couverture (02/09/2026, retour d'Angelo) : si une tâche a une
+// image en pièce jointe, la première sert de couverture sur la carte, façon
+// Trello (0019_kanban_pieces_jointes.sql pour le détail/aperçu en grand).
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -33,6 +36,8 @@ const PRIORITE_COLOR: Record<PrioriteTache, string> = {
   important: "var(--important)",
   normal: "var(--normal)",
 };
+
+const BUCKET_PIECES_JOINTES = "taches-pieces-jointes";
 
 const COLONNES_DEFAUT: Array<{ nom: string; statut_lie: Tache["statut"]; ordre: number }> = [
   { nom: "À faire", statut_lie: "a_faire", ordre: 0 },
@@ -71,7 +76,54 @@ export default function KanbanBoard({
   const [tacheOuverteId, setTacheOuverteId] = useState<string | null>(null);
   const [panneauColonnesOuvert, setPanneauColonnesOuvert] = useState(false);
   const [espaceActif, setEspaceActif] = useState<EspaceTache>("partage");
+  const [couverturesParTache, setCouverturesParTache] = useState<Map<string, string>>(new Map());
   const deepLinkTraite = useRef(false);
+
+  // Couvertures : une requête groupée pour trouver la première image de
+  // chaque tâche, puis une seule createSignedUrls pour toutes — pas un appel
+  // par carte.
+  const chargerCouvertures = useCallback(
+    async (tachesActuelles: Tache[]) => {
+      if (tachesActuelles.length === 0) {
+        setCouverturesParTache(new Map());
+        return;
+      }
+      const { data: pieces } = await supabase
+        .from("pieces_jointes")
+        .select("tache_id, chemin_stockage, type_mime, created_at")
+        .in(
+          "tache_id",
+          tachesActuelles.map((t) => t.id)
+        )
+        .order("created_at", { ascending: true });
+
+      const premiereImageParTache = new Map<string, string>();
+      for (const p of (pieces ?? []) as { tache_id: string; chemin_stockage: string; type_mime: string | null }[]) {
+        if (p.type_mime?.startsWith("image/") && !premiereImageParTache.has(p.tache_id)) {
+          premiereImageParTache.set(p.tache_id, p.chemin_stockage);
+        }
+      }
+      if (premiereImageParTache.size === 0) {
+        setCouverturesParTache(new Map());
+        return;
+      }
+
+      const chemins = Array.from(premiereImageParTache.values());
+      const { data: signees } = await supabase.storage.from(BUCKET_PIECES_JOINTES).createSignedUrls(chemins, 3600);
+      const urlParChemin = new Map<string, string>();
+      (signees ?? []).forEach((s, idx) => {
+        if (s?.signedUrl) urlParChemin.set(chemins[idx], s.signedUrl);
+      });
+
+      const resultat = new Map<string, string>();
+      premiereImageParTache.forEach((chemin, tacheId) => {
+        const url = urlParChemin.get(chemin);
+        if (url) resultat.set(tacheId, url);
+      });
+      setCouverturesParTache(resultat);
+    },
+    [supabase]
+  );
 
   const chargerTaches = useCallback(async () => {
     const { data, error } = await supabase
@@ -84,7 +136,8 @@ export default function KanbanBoard({
       return;
     }
     setTaches(data ?? []);
-  }, [supabase]);
+    chargerCouvertures(data ?? []);
+  }, [supabase, chargerCouvertures]);
 
   const chargerColonnes = useCallback(async () => {
     const { data, error } = await supabase.from("colonnes_kanban").select("*").order("ordre", { ascending: true });
@@ -199,6 +252,9 @@ export default function KanbanBoard({
   function fermerPanneauTache() {
     setTacheOuverteId(null);
     if (searchParams.get("tache")) router.replace("/kanban");
+    // Une pièce jointe a pu être ajoutée/supprimée pendant que le panneau était
+    // ouvert — les couvertures de carte ne suivent pas le realtime sur `taches`.
+    chargerCouvertures(taches);
   }
 
   function tacheMiseAJour(t: Tache) {
@@ -406,6 +462,14 @@ export default function KanbanBoard({
                       cursor: "grab",
                     }}
                   >
+                    {couverturesParTache.get(tache.id) && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={couverturesParTache.get(tache.id)}
+                        alt=""
+                        style={{ width: "100%", height: 110, objectFit: "cover", borderRadius: 6, marginBottom: 8, display: "block" }}
+                      />
+                    )}
                     <div style={{ fontSize: 14, marginBottom: 6 }}>{tache.titre}</div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                       <span
