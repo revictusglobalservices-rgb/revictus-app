@@ -10,6 +10,9 @@ export type RoleUtilisateur = "collaborateur" | "manager" | "admin";
 export type StatutUtilisateur = "actif" | "invite" | "suspendu" | "archive";
 export type StatutTache = "a_faire" | "en_cours" | "en_attente" | "terminee";
 export type PrioriteTache = "urgent" | "important" | "normal";
+// Kanban : tâche visible/modifiable seulement par son propriétaire (personnel)
+// ou par toute l'entreprise (partage) — décision du 01/09/2026.
+export type EspaceTache = "personnel" | "partage";
 export type StatutPointage = "ouvert" | "ferme";
 export type StatutCorrection = "en_attente" | "approuvee" | "refusee";
 export type TableCible = "pointages" | "sessions_temps" | "taches";
@@ -55,6 +58,7 @@ export type Tache = {
   assigne_id: string | null;
   createur_id: string;
   echeance: string | null;
+  espace: EspaceTache;
   ordre: number;
   created_at: string;
   updated_at: string;

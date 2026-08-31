@@ -7,10 +7,16 @@
 // mentions) ; assignation + échéance dès la création ; gestion des colonnes
 // réservée à l'admin via GestionColonnes ; ouverture automatique d'une tâche
 // via ?tache=<id> (lien de notification, ex. mention en commentaire).
+// Espace personnel / espace partagé (décision du 01/09/2026) : deux onglets sur
+// le même tableau (mêmes colonnes) — "Partagé" est visible et modifiable par
+// toute l'entreprise (façon Trello), "Personnel" reste filtré à ses propres
+// tâches (assigné/créateur/manager/admin), comportement historique inchangé.
+// Le filtrage de visibilité est fait côté RLS (0018_kanban_espace.sql) ; le
+// front ne fait que trier l'ensemble déjà reçu par `espace` pour l'affichage.
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { ColonneKanban, PrioriteTache, RoleUtilisateur, Tache } from "@/types/database";
+import type { ColonneKanban, EspaceTache, PrioriteTache, RoleUtilisateur, Tache } from "@/types/database";
 import TacheDetail from "./TacheDetail";
 import GestionColonnes from "./GestionColonnes";
 
@@ -64,6 +70,7 @@ export default function KanbanBoard({
   const [dragTacheId, setDragTacheId] = useState<string | null>(null);
   const [tacheOuverteId, setTacheOuverteId] = useState<string | null>(null);
   const [panneauColonnesOuvert, setPanneauColonnesOuvert] = useState(false);
+  const [espaceActif, setEspaceActif] = useState<EspaceTache>("partage");
   const deepLinkTraite = useRef(false);
 
   const chargerTaches = useCallback(async () => {
@@ -148,13 +155,29 @@ export default function KanbanBoard({
   useEffect(() => {
     if (deepLinkTraite.current || loading) return;
     const idParam = searchParams.get("tache");
-    if (idParam && taches.some((t) => t.id === idParam)) {
-      setTacheOuverteId(idParam);
+    const cible = idParam ? taches.find((t) => t.id === idParam) : null;
+    if (cible) {
+      setEspaceActif(cible.espace);
+      setTacheOuverteId(cible.id);
       deepLinkTraite.current = true;
     }
   }, [searchParams, taches, loading]);
 
+  const tachesEspace = useMemo(() => taches.filter((t) => t.espace === espaceActif), [taches, espaceActif]);
+
   const tachesParColonne = useMemo(() => {
+    const map = new Map<string, Tache[]>();
+    for (const col of colonnes) map.set(col.id, []);
+    for (const t of tachesEspace) {
+      if (t.colonne_id && map.has(t.colonne_id)) map.get(t.colonne_id)!.push(t);
+    }
+    return map;
+  }, [colonnes, tachesEspace]);
+
+  // Toutes espaces confondus — sert uniquement à GestionColonnes pour bloquer
+  // la suppression d'une colonne qui contient encore des tâches, même si
+  // l'onglet actif n'en montre aucune.
+  const tachesParColonneToutes = useMemo(() => {
     const map = new Map<string, Tache[]>();
     for (const col of colonnes) map.set(col.id, []);
     for (const t of taches) {
@@ -225,6 +248,7 @@ export default function KanbanBoard({
         createur_id: currentUserId,
         assigne_id: nouvelAssigneId || null,
         echeance: nouvelleEcheance ? new Date(nouvelleEcheance + "T23:59:59").toISOString() : null,
+        espace: espaceActif,
         ordre: ordreCible,
       } as never)
       .select("*")
@@ -273,8 +297,41 @@ export default function KanbanBoard({
         </div>
       )}
 
-      {role === "admin" && (
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
+        <div style={{ display: "flex", gap: 6, background: "var(--bg)", padding: 4, borderRadius: 10 }}>
+          <button
+            onClick={() => setEspaceActif("partage")}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 7,
+              border: "none",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              background: espaceActif === "partage" ? "var(--navy)" : "transparent",
+              color: espaceActif === "partage" ? "#fff" : "var(--ink-2)",
+            }}
+          >
+            Espace partagé
+          </button>
+          <button
+            onClick={() => setEspaceActif("personnel")}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 7,
+              border: "none",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              background: espaceActif === "personnel" ? "var(--navy)" : "transparent",
+              color: espaceActif === "personnel" ? "#fff" : "var(--ink-2)",
+            }}
+          >
+            Mon espace personnel
+          </button>
+        </div>
+
+        {role === "admin" && (
           <button
             onClick={() => setPanneauColonnesOuvert(true)}
             style={{
@@ -289,8 +346,14 @@ export default function KanbanBoard({
           >
             Gérer les colonnes
           </button>
-        </div>
-      )}
+        )}
+      </div>
+
+      <p style={{ fontSize: 12, color: "var(--ink-2)", margin: "0 0 12px" }}>
+        {espaceActif === "partage"
+          ? "Toutes les tâches de l'entreprise — visibles et modifiables par tout le monde."
+          : "Tes tâches (assignées à toi ou créées par toi) — visibles par toi, ton manager et les admins."}
+      </p>
 
       <div style={{ display: "flex", gap: 16, overflowX: "auto", alignItems: "flex-start" }}>
         {colonnes.map((colonne) => (
@@ -485,7 +548,7 @@ export default function KanbanBoard({
         <GestionColonnes
           entrepriseId={entrepriseId}
           colonnes={colonnes}
-          tachesParColonne={tachesParColonne}
+          tachesParColonne={tachesParColonneToutes}
           onClose={() => setPanneauColonnesOuvert(false)}
           onChanged={chargerColonnes}
         />
