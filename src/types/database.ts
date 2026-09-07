@@ -29,6 +29,7 @@ export type TypeCongeAbsence =
   | "absence_injustifiee"
   | "absence_autre";
 export type StatutCongeAbsence = "en_attente" | "validee" | "refusee";
+export type StatutIdee = "en_attente" | "validee" | "refusee";
 
 export type Utilisateur = {
   id: string;
@@ -232,6 +233,26 @@ export type CongeAbsence = {
   deleted_at: string | null;
 };
 
+export type Idee = {
+  id: string;
+  entreprise_id: string;
+  auteur_id: string;
+  auteur_nom: string;
+  auteur_est_admin: boolean;
+  titre: string;
+  description: string | null;
+  statut: StatutIdee;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+export type IdeeVote = {
+  idee_id: string;
+  utilisateur_id: string;
+  created_at: string;
+};
+
 // Placeholder minimal pour que `createClient<Database>()` compile dès maintenant.
 // À affiner (ou remplacer entièrement) avec `supabase gen types`.
 type TableDef<Row> = { Row: Row; Insert: Partial<Row>; Update: Partial<Row>; Relationships: [] };
@@ -252,6 +273,8 @@ export type Database = {
       planning_recurrences: TableDef<PlanningRecurrence>;
       planning_entrees: TableDef<PlanningEntree>;
       conges_absences: TableDef<CongeAbsence>;
+      idees: TableDef<Idee>;
+      idees_votes: TableDef<IdeeVote>;
     };
     Views: Record<string, never>;
     Functions: {
@@ -269,6 +292,8 @@ export type Database = {
       };
       valider_conge_absence: { Args: { p_id: string }; Returns: CongeAbsence };
       refuser_conge_absence: { Args: { p_id: string; p_motif?: string | null }; Returns: CongeAbsence };
+      valider_idee: { Args: { p_id: string }; Returns: Idee };
+      refuser_idee: { Args: { p_id: string }; Returns: Idee };
     };
     Enums: Record<string, never>;
   };

@@ -27,6 +27,9 @@ const SUJETS: Record<string, string> = {
   conge_refusee: "Congé refusé — Revictus",
   absence_validee: "Absence validée — Revictus",
   absence_refusee: "Absence refusée — Revictus",
+  idee_nouvelle: "Nouvelle idée proposée — Revictus",
+  idee_validee: "Idée validée — Revictus",
+  idee_refusee: "Idée refusée — Revictus",
 };
 
 export async function POST(request: Request) {
