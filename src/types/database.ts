@@ -253,6 +253,17 @@ export type IdeeVote = {
   created_at: string;
 };
 
+export type IdeePieceJointe = {
+  id: string;
+  idee_id: string;
+  chemin_stockage: string;
+  nom_fichier: string;
+  taille_octets: number;
+  type_mime: string | null;
+  auteur_id: string;
+  created_at: string;
+};
+
 // Placeholder minimal pour que `createClient<Database>()` compile dès maintenant.
 // À affiner (ou remplacer entièrement) avec `supabase gen types`.
 type TableDef<Row> = { Row: Row; Insert: Partial<Row>; Update: Partial<Row>; Relationships: [] };
@@ -275,6 +286,7 @@ export type Database = {
       conges_absences: TableDef<CongeAbsence>;
       idees: TableDef<Idee>;
       idees_votes: TableDef<IdeeVote>;
+      idees_pieces_jointes: TableDef<IdeePieceJointe>;
     };
     Views: Record<string, never>;
     Functions: {
