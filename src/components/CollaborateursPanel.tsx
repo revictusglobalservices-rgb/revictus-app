@@ -1,0 +1,38 @@
+"use client";
+import {useState,type FormEvent} from "react";
+import {useRouter} from "next/navigation";
+import {inviterCollaborateur} from "@/app/(app)/manager/collaborateurs/actions";
+import type {RoleUtilisateur,StatutUtilisateur} from "@/types/database";
+
+type Membre={id:string;nom:string;email:string;role:RoleUtilisateur;manager_id:string|null;statut:StatutUtilisateur};
+const labels:Record<StatutUtilisateur,string>={actif:"Actif",invite:"Invité",suspendu:"Suspendu",archive:"Archivé"};
+const roles:Record<RoleUtilisateur,string>={admin:"Administrateur",manager:"Manager",collaborateur:"Collaborateur"};
+const champ={padding:"10px 12px",border:"1px solid var(--border)",borderRadius:8,width:"100%",fontSize:14,background:"white"};
+const btn={padding:"10px 14px",border:0,borderRadius:8,background:"var(--navy)",color:"white",cursor:"pointer",fontWeight:600};
+export default function CollaborateursPanel({membres}:{membres:Membre[]}){
+ const router=useRouter();
+ const [ouvert,setOuvert]=useState(false),[nom,setNom]=useState(""),[email,setEmail]=useState(""),[role,setRole]=useState("collaborateur"),[managerId,setManagerId]=useState(""),[recherche,setRecherche]=useState(""),[filtre,setFiltre]=useState("tous"),[message,setMessage]=useState(""),[busy,setBusy]=useState(false);
+ async function ajouter(e:FormEvent<HTMLFormElement>){
+   e.preventDefault();if(busy)return;setBusy(true);setMessage("");
+   try{const r=await inviterCollaborateur({nom,email,role,managerId});setMessage(r.message);if(r.ok){setNom("");setEmail("");setRole("collaborateur");setManagerId("");setOuvert(false);}router.refresh();}
+   catch{setMessage("Une erreur est survenue. Vérifiez la liste avant de réessayer.");}
+   finally{setBusy(false);}
+ }
+ const visibles=membres.filter(m=>(filtre==="tous"||m.statut===filtre)&&(m.nom+" "+m.email).toLowerCase().includes(recherche.trim().toLowerCase()));
+ return <main style={{maxWidth:1200,margin:"auto",padding:32}}>
+   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:16,flexWrap:"wrap"}}><div><p style={{color:"var(--ink-2)",fontSize:13}}>Administration · Équipe</p><h1 style={{color:"var(--navy)",margin:"0 0 6px"}}>Collaborateurs</h1><p style={{color:"var(--ink-2)"}}>Gérer les membres et leurs accès.</p></div><button style={btn} onClick={()=>setOuvert(!ouvert)}>+ Ajouter un collaborateur</button></div>
+   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(135px,1fr))",gap:12,margin:"24px 0"}}>{["tous","actif","invite","suspendu"].map(s=><section key={s} className="card-2"><span style={{color:"var(--ink-2)"}}>{s==="tous"?"Total":labels[s as StatutUtilisateur]}</span><div style={{fontSize:32,fontWeight:700,color:"var(--navy)",marginTop:8}}>{s==="tous"?membres.length:membres.filter(m=>m.statut===s).length}</div></section>)}</div>
+   {ouvert&&<section className="card-2" style={{marginBottom:20}}><h2 style={{marginTop:0,color:"var(--navy)"}}>Nouveau collaborateur</h2><form onSubmit={ajouter}>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:16}}>
+    <label>Nom complet<input style={champ} value={nom} onChange={e=>setNom(e.target.value)} placeholder="Prénom et nom" required maxLength={120}/></label>
+    <label>E-mail<input style={champ} value={email} type="email" onChange={e=>setEmail(e.target.value)} placeholder="nom@example.com" required maxLength={254}/></label>
+    <label>Rôle<select style={champ} value={role} onChange={e=>setRole(e.target.value)}><option value="collaborateur">Collaborateur</option><option value="manager">Manager</option></select></label>
+    <label>Manager direct<select style={champ} value={managerId} onChange={e=>setManagerId(e.target.value)}><option value="">Aucun manager</option>{membres.filter(m=>["admin","manager"].includes(m.role)&&m.statut==="actif").map(m=><option key={m.id} value={m.id}>{m.nom}</option>)}</select></label></div>
+    <p style={{color:"var(--ink-2)",fontSize:13}}>Un e-mail d’activation sera envoyé à cette adresse.</p>
+    <div style={{display:"flex",justifyContent:"flex-end",gap:12,marginTop:16}}><button type="button" disabled={busy} onClick={()=>setOuvert(false)}>Annuler</button><button style={btn} type="submit" disabled={busy}>{busy?"Envoi en cours…":"Envoyer l’invitation"}</button></div>
+   </form></section>}
+   {message&&<p role="status" style={{background:"var(--accent-2-bg)",padding:12,borderRadius:8}}>{message}</p>}
+   <section className="card-2"><div style={{display:"flex",gap:12,justifyContent:"space-between",alignItems:"center",flexWrap:"wrap"}}><h2 style={{color:"var(--navy)"}}>Membres de l’équipe</h2><div style={{display:"flex",gap:8}}><input aria-label="Recherche" placeholder="Rechercher..." style={{...champ,width:180}} value={recherche} onChange={e=>setRecherche(e.target.value)}/><select aria-label="Filtrer" style={{...champ,width:130}} value={filtre} onChange={e=>setFiltre(e.target.value)}><option value="tous">Tous</option>{Object.entries(labels).map(([s,label])=><option key={s} value={s}>{label}</option>)}</select></div></div>
+   <div style={{overflowX:"auto"}}><table style={{width:"100%",minWidth:620,borderCollapse:"collapse",textAlign:"left"}}><thead><tr>{["Nom et e-mail","Rôle","Manager","Statut","Actions"].map(h=><th key={h} style={{padding:12,borderBottom:"1px solid var(--border)"}}>{h}</th>)}</tr></thead><tbody>{visibles.map(m=><tr key={m.id} style={{borderBottom:"1px solid var(--border)"}}><td style={{padding:12}}><strong>{m.nom}</strong><div style={{fontSize:12,color:"var(--ink-2)"}}>{m.email}</div></td><td>{roles[m.role]}</td><td>{membres.find(x=>x.id===m.manager_id)?.nom??"—"}</td><td><span className={"badge "+(m.statut==="actif"?"badge-normal":m.statut==="invite"?"badge-accent":"badge-urgent")}>{labels[m.statut]}</span></td><td><a href={"/manager/equipe/"+m.id} style={{color:"var(--navy)",fontWeight:600}}>Voir la fiche</a></td></tr>)}</tbody></table>{visibles.length===0&&<p>Aucun résultat.</p>}</div></section>
+ </main>
+}

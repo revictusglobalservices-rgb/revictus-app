@@ -95,6 +95,7 @@ export default function Sidebar({ nom, role }: { nom: string; role: RoleUtilisat
 
   const liens = [
     { href: accueil, label: "Tableau de bord", icone: <IconeAccueil /> },
+    ...(role === "admin" ? [{ href: "/manager/collaborateurs", label: "Collaborateurs", icone: <IconePlanningEquipe /> }] : []),
     { href: "/pointage", label: "Pointage", icone: <IconePointage /> },
     { href: "/planning", label: role === "collaborateur" ? "Planning" : "Mon planning", icone: <IconePlanning /> },
     ...(role !== "collaborateur" ? [{ href: "/manager/planning", label: "Planning équipe", icone: <IconePlanningEquipe /> }] : []),

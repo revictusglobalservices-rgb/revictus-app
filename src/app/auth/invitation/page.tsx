@@ -1,0 +1,8 @@
+"use client";
+import {useState,type FormEvent} from "react";
+import {activerInvitation} from "./actions";
+export default function InvitationPage(){
+ const [email,setEmail]=useState(""),[code,setCode]=useState(""),[password,setPassword]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false);
+ async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();setBusy(true);setMessage("");try{const r=await activerInvitation(email,code,password);if(r.ok)location.assign("/");else setMessage(r.message);}catch{setMessage("Activation impossible. Réessayez.");}finally{setBusy(false);}}
+ return <main style={{maxWidth:430,margin:"72px auto",padding:"0 20px"}}><h1 style={{color:"var(--navy)"}}>Activer mon compte Revictus</h1><p>Renseignez votre adresse, le code reçu par e-mail et votre nouveau mot de passe.</p><form className="card" onSubmit={submit} style={{display:"grid",gap:12}}><label>Adresse e-mail<input type="email" required autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} style={{width:"100%",padding:10}}/></label><label>Code d’invitation<input required inputMode="numeric" autoComplete="one-time-code" value={code} onChange={e=>setCode(e.target.value)} style={{width:"100%",padding:10}}/></label><label>Mot de passe (12 caractères minimum)<input type="password" required minLength={12} maxLength={128} autoComplete="new-password" value={password} onChange={e=>setPassword(e.target.value)} style={{width:"100%",padding:10}}/></label>{message&&<p role="alert">{message}</p>}<button type="submit" disabled={busy}>{busy?"Activation…":"Activer mon compte"}</button></form></main>;
+}
