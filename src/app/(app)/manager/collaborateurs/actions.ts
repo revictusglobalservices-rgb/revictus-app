@@ -3,6 +3,21 @@ import nodemailer from "nodemailer";
 import { revalidatePath } from "next/cache";
 import { administration } from "@/lib/collaborateursAdmin";
 
+async function envoyerCode(nom:string,email:string,code:string) {
+  const user = process.env.GMAIL_USER?.trim();
+  const pass = process.env.GMAIL_APP_PASSWORD?.replace(/\s/g,"");
+  if(!user || !pass) return false;
+  try {
+    const transport = nodemailer.createTransport({service:"gmail",auth:{user,pass},connectionTimeout:10000,greetingTimeout:10000,socketTimeout:15000});
+    await transport.sendMail({from:"Revictus <"+user+">",to:email,subject:"Invitation à votre espace Revictus",text:"Bonjour "+nom+",\n\nVous êtes invité à rejoindre l'équipe Revictus.\nActivez votre compte sur https://revictus-app.vercel.app/auth/invitation avec votre adresse e-mail et ce code à usage unique : "+code+".\n\nNe partagez pas ce code.\nRevictus"});
+    return true;
+  } catch(error) {
+    const e = error as {code?:unknown;responseCode?:unknown};
+    console.error("Invitation Revictus : envoi SMTP échoué",{code:typeof e.code==="string"&&/^[A-Z0-9_]{1,30}$/.test(e.code)?e.code:"UNKNOWN",responseCode:typeof e.responseCode==="number"?e.responseCode:undefined});
+    return false;
+  }
+}
+
 export async function inviterCollaborateur(input: { nom: string; email: string; role: string; managerId: string }) {
   const admin = await administration();
   if (!admin) return { ok: false, message: "Action non autorisée." };
@@ -27,16 +42,27 @@ export async function inviterCollaborateur(input: { nom: string; email: string; 
     role:role as "collaborateur"|"manager", manager_id:managerId, statut:"invite"
   });
   if (profileError) return {ok:false,message:"L'invitation n'a pas été envoyée. Contactez l'administrateur technique pour vérifier le compte."};
-  const transport = nodemailer.createTransport({service:"gmail",auth:{user:process.env.GMAIL_USER,pass:process.env.GMAIL_APP_PASSWORD}});
-  try {
-    await transport.sendMail({
-      from: "Revictus <"+process.env.GMAIL_USER+">", to:email, subject:"Invitation à votre espace Revictus",
-      text:"Bonjour "+nom+",\n\nVous êtes invité à rejoindre l'équipe Revictus.\nActivez votre compte sur https://revictus-app.vercel.app/auth/invitation avec votre adresse e-mail et ce code à usage unique : "+invitation.properties.email_otp+".\n\nNe partagez pas ce code.\nRevictus"
-    });
-  } catch {
+  const delivered = await envoyerCode(nom,email,invitation.properties.email_otp);
+  if(!delivered){
     revalidatePath("/manager/collaborateurs");
-    return {ok:false,message:"Le compte est en attente, mais l'envoi de l'e-mail a échoué. Contactez l'administrateur technique."};
+    return {ok:false,created:true,message:"Le compte a été créé, mais l'e-mail n'a pas été envoyé. Utilisez Renvoyer l'invitation."};
   }
   revalidatePath("/manager/collaborateurs");
-  return {ok:true,message:"Invitation envoyée. Le compte est en attente d'activation."};
+  return {ok:true,created:true,message:"Invitation envoyée. Le compte est en attente d’activation."};
+}
+
+export async function renvoyerInvitation(id:string) {
+  const admin=await administration();
+  if(!admin || typeof id!=="string" || !/^[0-9a-f-]{36}$/i.test(id)) return {ok:false,message:"Action non autorisée."};
+  if(!process.env.GMAIL_USER?.trim() || !process.env.GMAIL_APP_PASSWORD?.trim()) return {ok:false,message:"Le service d'invitation n'est pas configuré."};
+  const {service,profil}=admin;
+  const {data:membre,error}=await service.from("utilisateurs").select("id,nom,email,role,statut").eq("id",id).eq("entreprise_id",profil.entreprise_id).eq("statut","invite").in("role",["collaborateur","manager"]).is("deleted_at",null).maybeSingle();
+  if(error || !membre) return {ok:false,message:"Ce compte ne peut pas recevoir une nouvelle invitation."};
+  const {data:authUser,error:authError}=await service.auth.admin.getUserById(membre.id);
+  if(authError || !authUser.user || authUser.user.email?.toLowerCase()!==membre.email.toLowerCase()) return {ok:false,message:"Le compte doit être vérifié avant de renvoyer l'invitation."};
+  const {data:invitation,error:inviteError}=await service.auth.admin.generateLink({type:"magiclink",email:membre.email});
+  if(inviteError || invitation?.user?.id!==membre.id || !invitation.properties?.email_otp) return {ok:false,message:"Impossible de préparer le nouveau code. Réessayez dans quelques instants."};
+  const delivered=await envoyerCode(membre.nom,membre.email,invitation.properties.email_otp);
+  if(!delivered) return {ok:false,message:"L'e-mail n'a pas été envoyé. Le compte est conservé."};
+  return {ok:true,message:"Invitation renvoyée avec succès."};
 }

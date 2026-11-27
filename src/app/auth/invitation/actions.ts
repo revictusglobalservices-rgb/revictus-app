@@ -9,10 +9,12 @@ export async function activerInvitation(emailInput:string,code:string,password:s
   if(!email||typeof code!=="string"||!/^\d{6,10}$/.test(code)||typeof password!=="string"||password.length<12||password.length>128) return {ok:false,message:"Vérifiez le code et choisissez un mot de passe d'au moins 12 caractères."};
   const supabase=createClient();
   const service=createServiceClient();
-  const {data,error}=await supabase.auth.verifyOtp({email,token:code,type:"invite"});
+  const {data:attente,error:attenteError}=await service.from("utilisateurs").select("id").eq("email",email).eq("statut","invite").in("role",["collaborateur","manager"]).is("deleted_at",null).maybeSingle();
+  if(attenteError||!attente) return {ok:false,message:"Code invalide ou expiré."};
+  const {data,error}=await supabase.auth.verifyOtp({email,token:code,type:"email"});
   if(error||!data.user||!data.user.email_confirmed_at||data.user.email?.toLowerCase()!==email) return {ok:false,message:"Code invalide ou expiré."};
   const {data:profil}=await service.from("utilisateurs").select("id,statut,role,email,deleted_at").eq("id",data.user.id).maybeSingle();
-  if(!profil||profil.statut!=="invite"||profil.deleted_at||profil.email.toLowerCase()!==email||profil.role==="admin"){
+  if(data.user.id!==attente.id||!profil||profil.statut!=="invite"||profil.deleted_at||profil.email.toLowerCase()!==email||profil.role==="admin"){
     await supabase.auth.signOut();
     return {ok:false,message:"Invitation non valide."};
   }
