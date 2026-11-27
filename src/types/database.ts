@@ -51,7 +51,11 @@ export type Utilisateur = {
   deleted_at: string | null;
 };
 
+export type ClientKanban={id:string;entreprise_id:string;nom:string;actif:boolean;created_at:string};
+export type AccesClient={id:string;client_id:string;utilisateur_id:string;accorde_par:string;origine:"admin"|"manager";date_debut:string;date_fin:string|null;revoque_le:string|null;created_at:string};
 export type Tache = {
+  client_id:string|null;
+  service:string|null;
   id: string;
   entreprise_id: string;
   titre: string;
@@ -279,6 +283,8 @@ export type Database = {
     Tables: {
       utilisateurs: TableDef<Utilisateur>;
       taches: TableDef<Tache>;
+      clients: TableDef<ClientKanban>;
+      acces_clients: TableDef<AccesClient>;
       colonnes_kanban: TableDef<ColonneKanban>;
       commentaires: TableDef<Commentaire>;
       pieces_jointes: TableDef<PieceJointe>;

@@ -19,7 +19,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { ColonneKanban, EspaceTache, PrioriteTache, RoleUtilisateur, Tache } from "@/types/database";
+import type { ClientKanban, ColonneKanban, EspaceTache, PrioriteTache, RoleUtilisateur, Tache } from "@/types/database";
 import TacheDetail from "./TacheDetail";
 import GestionColonnes from "./GestionColonnes";
 
@@ -75,6 +75,14 @@ export default function KanbanBoard({
   const [dragTacheId, setDragTacheId] = useState<string | null>(null);
   const [tacheOuverteId, setTacheOuverteId] = useState<string | null>(null);
   const [panneauColonnesOuvert, setPanneauColonnesOuvert] = useState(false);
+  const [clients, setClients] = useState<ClientKanban[]>([]);
+  const [filtreClient, setFiltreClient] = useState("tous");
+  const [filtreService, setFiltreService] = useState("");
+  const [filtreAssigne, setFiltreAssigne] = useState("");
+  const [filtrePriorite, setFiltrePriorite] = useState("");
+  const [filtreRetard, setFiltreRetard] = useState(false);
+  const [nouveauClient, setNouveauClient] = useState("");
+  const [nouveauService, setNouveauService] = useState("");
   const [espaceActif, setEspaceActif] = useState<EspaceTache>("partage");
   const [couverturesParTache, setCouverturesParTache] = useState<Map<string, string>>(new Map());
   const deepLinkTraite = useRef(false);
@@ -109,7 +117,7 @@ export default function KanbanBoard({
       }
 
       const chemins = Array.from(premiereImageParTache.values());
-      const { data: signees } = await supabase.storage.from(BUCKET_PIECES_JOINTES).createSignedUrls(chemins, 3600);
+      const { data: signees } = await supabase.storage.from(BUCKET_PIECES_JOINTES).createSignedUrls(chemins, 60);
       const urlParChemin = new Map<string, string>();
       (signees ?? []).forEach((s, idx) => {
         if (s?.signedUrl) urlParChemin.set(chemins[idx], s.signedUrl);
@@ -133,11 +141,22 @@ export default function KanbanBoard({
       .order("ordre", { ascending: true });
     if (error) {
       setErreur(error.message);
+      setTaches([]); setCouverturesParTache(new Map());
       return;
     }
     setTaches(data ?? []);
     chargerCouvertures(data ?? []);
   }, [supabase, chargerCouvertures]);
+
+  const chargerClients = useCallback(async () => {
+    const {data,error} = await supabase.from("clients").select("*").eq("actif",true).order("nom");
+    setClients(error ? [] : data ?? []);
+  }, [supabase]);
+  useEffect(() => {
+    chargerClients();
+    const timer = window.setInterval(() => { chargerClients(); chargerTaches(); }, 30000);
+    return () => window.clearInterval(timer);
+  }, [chargerClients,chargerTaches]);
 
   const chargerColonnes = useCallback(async () => {
     const { data, error } = await supabase.from("colonnes_kanban").select("*").order("ordre", { ascending: true });
@@ -216,7 +235,8 @@ export default function KanbanBoard({
     }
   }, [searchParams, taches, loading]);
 
-  const tachesEspace = useMemo(() => taches.filter((t) => t.espace === espaceActif), [taches, espaceActif]);
+  const tachesEspace = useMemo(() => taches.filter((t) => t.espace === espaceActif && (filtreClient === "tous" || (t.client_id ?? "interne") === filtreClient) && (!filtreService || t.service === filtreService) && (!filtreAssigne || t.assigne_id === filtreAssigne) && (!filtrePriorite || t.priorite === filtrePriorite) && (!filtreRetard || (t.echeance && t.statut !== "terminee" && new Date(t.echeance) < new Date()))), [taches, espaceActif, filtreClient, filtreService, filtreAssigne, filtrePriorite, filtreRetard]);
+  const services = Array.from(new Set(taches.map(t=>t.service).filter((x):x is string=>!!x))).sort();
 
   const tachesParColonne = useMemo(() => {
     const map = new Map<string, Tache[]>();
@@ -311,6 +331,8 @@ export default function KanbanBoard({
         assigne_id: nouvelAssigneId || null,
         echeance: nouvelleEcheance ? new Date(nouvelleEcheance + "T23:59:59").toISOString() : null,
         espace: espaceActif,
+        client_id: nouveauClient || null,
+        service: nouveauService.trim() || null,
         ordre: ordreCible,
       } as never)
       .select("*")
@@ -413,10 +435,18 @@ export default function KanbanBoard({
 
       <p style={{ fontSize: 12, color: "var(--ink-2)", margin: "0 0 12px" }}>
         {espaceActif === "partage"
-          ? "Toutes les tâches de l'entreprise — visibles et modifiables par tout le monde."
+          ? "Tâches internes et tâches des clients auxquels tu as accès."
           : "Tes tâches (assignées à toi ou créées par toi) — visibles par toi, ton manager et les admins."}
       </p>
 
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:16}}>
+        <select aria-label="Client" value={filtreClient} onChange={e=>setFiltreClient(e.target.value)}><option value="tous">Tous les clients accessibles</option><option value="interne">Espace interne</option>{clients.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select>
+        <select aria-label="Service" value={filtreService} onChange={e=>setFiltreService(e.target.value)}><option value="">Tous les services</option>{services.map(s=><option key={s}>{s}</option>)}</select>
+        <select aria-label="Collaborateur" value={filtreAssigne} onChange={e=>setFiltreAssigne(e.target.value)}><option value="">Tous les collaborateurs</option>{membres.map(m=><option key={m.id} value={m.id}>{m.nom}</option>)}</select>
+        <select aria-label="Priorité" value={filtrePriorite} onChange={e=>setFiltrePriorite(e.target.value)}><option value="">Toutes les priorités</option>{Object.entries(PRIORITE_LABEL).map(([p,l])=><option key={p} value={p}>{l}</option>)}</select>
+        <label><input type="checkbox" checked={filtreRetard} onChange={e=>setFiltreRetard(e.target.checked)}/> En retard</label>
+        {role !== "collaborateur" && <a href="/manager/clients">Gérer les clients et accès →</a>}
+      </div>
       <div style={{ display: "flex", gap: 16, overflowX: "auto", alignItems: "flex-start" }}>
         {colonnes.map((colonne) => (
           <div
@@ -476,6 +506,7 @@ export default function KanbanBoard({
                         style={{ width: "100%", height: 110, objectFit: "cover", borderRadius: 6, marginBottom: 8, display: "block" }}
                       />
                     )}
+                    <div style={{fontSize:11,color:"var(--ink-2)",marginBottom:4}}>{clients.find(c=>c.id===tache.client_id)?.nom ?? "Interne"}{tache.service ? " · "+tache.service : ""}</div>
                     <div style={{ fontSize: 14, marginBottom: 6 }}>{tache.titre}</div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                       <span
@@ -522,6 +553,8 @@ export default function KanbanBoard({
                     placeholder="Titre de la tâche"
                     style={{ padding: "6px 8px", border: "1px solid var(--border)", borderRadius: 6, fontSize: 14 }}
                   />
+                  <select aria-label="Client de la tâche" value={nouveauClient} onChange={e=>setNouveauClient(e.target.value)}><option value="">Espace interne</option>{clients.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select>
+                  <input placeholder="Service (facultatif)" maxLength={100} value={nouveauService} onChange={e=>setNouveauService(e.target.value)} />
                   <select
                     value={nouvellePriorite}
                     onChange={(e) => setNouvellePriorite(e.target.value as PrioriteTache)}
@@ -582,6 +615,8 @@ export default function KanbanBoard({
                 <button
                   onClick={() => {
                     setAjoutColonneId(colonne.id);
+                    setNouveauClient(filtreClient === "tous" || filtreClient === "interne" ? "" : filtreClient);
+                    setNouveauService(filtreService);
                     setNouveauTitre("");
                     setNouvelAssigneId(currentUserId);
                     setNouvelleEcheance("");
@@ -607,6 +642,8 @@ export default function KanbanBoard({
       {tacheOuverte && (
         <TacheDetail
           tache={tacheOuverte}
+          clients={clients}
+          role={role}
           membres={membres}
           currentUserId={currentUserId}
           onClose={fermerPanneauTache}

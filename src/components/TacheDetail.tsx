@@ -19,7 +19,7 @@
 // celles de leur périmètre, tout le monde sur l'espace partagé.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Commentaire, PieceJointe, PrioriteTache, StatutTache, Tache } from "@/types/database";
+import type { ClientKanban, RoleUtilisateur, Commentaire, PieceJointe, PrioriteTache, StatutTache, Tache } from "@/types/database";
 
 type Membre = { id: string; nom: string };
 
@@ -53,6 +53,8 @@ function formatTaille(octets: number) {
 
 export default function TacheDetail({
   tache,
+  clients = [],
+  role,
   membres,
   currentUserId,
   onClose,
@@ -60,6 +62,8 @@ export default function TacheDetail({
   onDeleted,
 }: {
   tache: Tache;
+  clients?: ClientKanban[];
+  role?: RoleUtilisateur;
   membres: Membre[];
   currentUserId: string;
   onClose: () => void;
@@ -67,6 +71,8 @@ export default function TacheDetail({
   onDeleted: (id: string) => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
+  const [clientId,setClientId] = useState(tache.client_id ?? "");
+  const [service,setService] = useState(tache.service ?? "");
   const [titre, setTitre] = useState(tache.titre);
   const [description, setDescription] = useState(tache.description ?? "");
   const [echeance, setEcheance] = useState(toDateInputValue(tache.echeance));
@@ -127,7 +133,7 @@ export default function TacheDetail({
     }
     const { data: signees } = await supabase.storage
       .from(BUCKET_PIECES_JOINTES)
-      .createSignedUrls(images.map((p) => p.chemin_stockage), 3600);
+      .createSignedUrls(images.map((p) => p.chemin_stockage), 60);
     const urls: Record<string, string> = {};
     images.forEach((p, idx) => {
       const url = signees?.[idx]?.signedUrl;
@@ -138,6 +144,7 @@ export default function TacheDetail({
 
   useEffect(() => {
     setTitre(tache.titre);
+    setClientId(tache.client_id ?? ""); setService(tache.service ?? "");
     setDescription(tache.description ?? "");
     setEcheance(toDateInputValue(tache.echeance));
     setAssigneId(tache.assigne_id ?? "");
@@ -174,6 +181,8 @@ export default function TacheDetail({
         echeance: echeance ? new Date(echeance + "T23:59:59").toISOString() : null,
         assigne_id: assigneId || null,
         priorite,
+        service: service.trim() || null,
+        ...(role === "admin" ? {client_id:clientId || null} : {}),
       } as never)
       .eq("id", tache.id)
       .select("*")
@@ -391,6 +400,10 @@ export default function TacheDetail({
           </span>
         )}
 
+        <label style={labelStyle()}>Client
+          <select style={champStyle()} disabled={role!=="admin"} value={clientId} onChange={e=>setClientId(e.target.value)}><option value="">Interne</option>{clients.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select>
+        </label>
+        <label style={labelStyle()}>Service<input style={champStyle()} maxLength={100} value={service} onChange={e=>setService(e.target.value)}/></label>
         <label style={labelStyle()}>
           Description
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} style={{ ...champStyle(), resize: "vertical" }} />
