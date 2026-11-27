@@ -66,3 +66,17 @@ export async function renvoyerInvitation(id:string) {
   if(!delivered) return {ok:false,message:"L'e-mail n'a pas été envoyé. Le compte est conservé."};
   return {ok:true,message:"Invitation renvoyée avec succès."};
 }
+
+export async function configurerPointage(id:string,mode:"fixe"|"flexible",minutes:number,date:string){
+ const admin=await administration();
+ if(!admin||!["fixe","flexible"].includes(mode)||typeof id!=="string"||typeof date!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isInteger(minutes)||minutes<30||minutes>960)return {ok:false,message:"Paramètres invalides."};
+ const {service,profil}=admin;
+ const {data:m,error}=await service.from("utilisateurs").select("id,mode_pointage,flexible_depuis").eq("id",id).eq("entreprise_id",profil.entreprise_id).eq("role","collaborateur").eq("statut","actif").is("deleted_at",null).maybeSingle();
+ if(error||!m)return {ok:false,message:"Collaborateur non autorisé."};
+ const {count,error:sessionError}=await service.from("pointages_flexibles").select("id",{count:"exact",head:true}).eq("utilisateur_id",id).is("fin",null);
+ if(sessionError||count)return {ok:false,message:"Une session est ouverte : attendez sa clôture."};
+ if(mode==="fixe"&&m.mode_pointage==="flexible")return {ok:false,message:"Le retour au mode fixe doit être planifié avec l’administrateur technique."};
+ const {error:e}=await service.from("utilisateurs").update({mode_pointage:mode,objectif_minutes:mode==="flexible"?minutes:null,flexible_depuis:mode==="flexible"?date:null}).eq("id",id).eq("entreprise_id",profil.entreprise_id);
+ if(e)return {ok:false,message:"Impossible d'enregistrer."};
+ revalidatePath("/manager/collaborateurs");revalidatePath("/manager");return {ok:true,message:"Paramètres enregistrés. Le pointage fixe déjà ouvert devra être clôturé."};
+}

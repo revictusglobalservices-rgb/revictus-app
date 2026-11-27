@@ -41,6 +41,9 @@ export type Utilisateur = {
   role: RoleUtilisateur;
   statut: StatutUtilisateur;
   fuseau_horaire: string;
+  mode_pointage: "fixe" | "flexible";
+  objectif_minutes: number | null;
+  flexible_depuis: string | null;
   photo_url: string | null;
   langue: string;
   created_at: string;
@@ -122,6 +125,8 @@ export type SessionTemps = {
 };
 
 export type TypePause = "petite_pause" | "pause_dejeuner" | "permission";
+
+export type PointageFlexible = {id:string;utilisateur_id:string;debut:string;fin:string|null};
 
 export type Pause = {
   id: string;
@@ -277,6 +282,7 @@ export type Database = {
       commentaires: TableDef<Commentaire>;
       pieces_jointes: TableDef<PieceJointe>;
       pointages: TableDef<Pointage>;
+      pointages_flexibles: TableDef<PointageFlexible>;
       pauses: TableDef<Pause>;
       sessions_temps: TableDef<SessionTemps>;
       corrections: TableDef<Correction>;
