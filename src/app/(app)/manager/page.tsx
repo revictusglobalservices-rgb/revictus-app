@@ -1,123 +1,61 @@
-// Dashboard manager — contenu validé section 9 :
-// présence équipe, tâches en retard, Kanban global, corrections en attente.
-// Le manager lit ET modifie toutes les données de son équipe (décision du 27/08/2026).
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
-import type { StatutTache, StatutUtilisateur } from "@/types/database";
-
-const STATUT_COMPTEUR_LABEL: Record<StatutTache, string> = {
-  a_faire: "à faire",
-  en_cours: "en cours",
-  en_attente: "en attente",
-  terminee: "terminées",
-};
-
-const STATUT_UTIL_LABEL: Record<StatutUtilisateur, string> = {
-  actif: "Actif",
-  invite: "Invité",
-  suspendu: "Suspendu",
-  archive: "Archivé",
-};
-
-export default async function DashboardManager() {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const maintenant = new Date().toISOString();
-
-  // Rôle d'abord : un admin voit toute l'entreprise (pas seulement ses
-  // propres rattachements directs), comme sur /manager/conges et
-  // /manager/planning — décision du 03/09/2026, pour qu'Angelo (admin)
-  // puisse couvrir l'équipe de Larissa (manager) en son absence, avec les
-  // mêmes informations qu'elle sur cette page.
-  const { data: profil } = await supabase.from("utilisateurs").select("nom, role, entreprise_id").eq("id", user.id).single();
-
-  const requeteEquipe =
-    profil?.role === "admin"
-      ? supabase.from("utilisateurs").select("id, nom, statut").eq("entreprise_id", profil.entreprise_id).is("deleted_at", null)
-      : supabase.from("utilisateurs").select("id, nom, statut").eq("manager_id", user.id).is("deleted_at", null);
-
-  const [{ data: equipe }, { data: enRetard }, { data: tachesGlobales }, { data: corrections }] = await Promise.all([
-    requeteEquipe,
-    supabase
-      .from("taches")
-      .select("id, titre, echeance")
-      .lt("echeance", maintenant)
-      .neq("statut", "terminee")
-      .is("deleted_at", null)
-      .order("echeance", { ascending: true })
-      .limit(5),
-    supabase.from("taches").select("statut").is("deleted_at", null),
-    supabase.from("corrections").select("id").eq("statut", "en_attente"),
-  ]);
-
-  const compteursStatut: Record<StatutTache, number> = { a_faire: 0, en_cours: 0, en_attente: 0, terminee: 0 };
-  for (const t of tachesGlobales ?? []) compteursStatut[t.statut]++;
-
-  return (
-    <main style={{ maxWidth: 960, margin: "0 auto", padding: 32 }}>
-      <h1 style={{ color: "var(--navy)" }}>Tableau de bord manager</h1>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginTop: 24 }}>
-        <section className="card">
-          <h3>Présence équipe</h3>
-          <p style={{ color: "var(--ink-2)" }}>{equipe?.length ?? 0} collaborateur(s) rattaché(s).</p>
-          {(equipe ?? []).length > 0 && (
-            <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0", display: "flex", flexDirection: "column", gap: 4 }}>
-              {(equipe ?? []).slice(0, 5).map((m) => (
-                <li key={m.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                  <a href={`/manager/equipe/${m.id}`} style={{ color: "var(--navy)", fontWeight: 600 }}>
-                    {m.nom}
-                  </a>
-                  <span style={{ color: "var(--ink-2)" }}>{STATUT_UTIL_LABEL[m.statut]}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="card">
-          <h3>Tâches en retard</h3>
-          {(enRetard ?? []).length === 0 ? (
-            <p style={{ color: "var(--ink-2)" }}>Aucune tâche en retard.</p>
-          ) : (
-            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-              {(enRetard ?? []).map((t) => (
-                <li key={t.id} style={{ fontSize: 14, color: "var(--urgent)" }}>
-                  {t.titre}
-                </li>
-              ))}
-            </ul>
-          )}
-          <a href="/kanban" style={{ fontSize: 13, color: "var(--navy)", fontWeight: 600, marginTop: 8, display: "inline-block" }}>
-            Voir &rarr;
-          </a>
-        </section>
-
-        <section className="card">
-          <h3>Kanban global</h3>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 13, color: "var(--ink-2)" }}>
-            {(Object.keys(STATUT_COMPTEUR_LABEL) as StatutTache[]).map((statut) => (
-              <span key={statut}>
-                {compteursStatut[statut]} {STATUT_COMPTEUR_LABEL[statut]}
-              </span>
-            ))}
-          </div>
-          <a href="/kanban" style={{ fontSize: 13, color: "var(--navy)", fontWeight: 600, marginTop: 8, display: "inline-block" }}>
-            Ouvrir &rarr;
-          </a>
-        </section>
-
-        <section className="card">
-          <h3>Corrections en attente</h3>
-          <p style={{ color: "var(--ink-2)" }}>{(corrections ?? []).length} saisie(s) à valider sous 48h.</p>
-          <a href="/corrections" style={{ fontSize: 13, color: "var(--navy)", fontWeight: 600, marginTop: 8, display: "inline-block" }}>
-            Traiter &rarr;
-          </a>
-        </section>
-      </div>
-    </main>
-  );
+import {createClient} from "@/lib/supabase/server";
+import {redirect} from "next/navigation";
+import DashboardManagerView,{type DashboardData,type LignePresence,type EtatPresence} from "@/components/DashboardManagerView";
+import DashboardRefresh from "@/components/DashboardRefresh";
+import type {StatutTache} from "@/types/database";
+export const dynamic="force-dynamic";
+const zone="Indian/Antananarivo";
+function heure(d:string|null|undefined){return d?new Date(d).toLocaleTimeString("fr-FR",{timeZone:zone,hour:"2-digit",minute:"2-digit"}):"—";}
+function minutes(s:string|null){if(!s)return null;const [h,m]=s.split(":").map(Number);return h*60+m;}
+export default async function Page(){
+ const supabase=createClient();
+ const {data:{user}}=await supabase.auth.getUser();
+ if(!user)redirect("/login");
+ const {data:profil}=await supabase.from("utilisateurs").select("id,nom,role,statut,entreprise_id,deleted_at").eq("id",user.id).single();
+ if(!profil||profil.statut!=="actif"||profil.deleted_at||profil.role==="collaborateur")redirect("/dashboard");
+ const now=new Date(),iso=now.toISOString(),jourPointage=iso.slice(0,10);
+ const local=new Intl.DateTimeFormat("en-CA",{timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(now);
+ const part=(k:string)=>local.find(p=>p.type===k)?.value??"";
+ const jour=part("year")+"-"+part("month")+"-"+part("day");
+ const nowMinute=minutes(heure(iso))??0;
+ let req=supabase.from("utilisateurs").select("id,nom").eq("entreprise_id",profil.entreprise_id).eq("statut","actif").is("deleted_at",null).order("nom");
+ if(profil.role!=="admin")req=req.eq("manager_id",profil.id);
+ const {data:equipe,error:equipeError}=await req;
+ if(equipeError)return <main style={{padding:32}}><h1>Tableau de bord</h1><p role="alert">Impossible de charger l’équipe. Actualisez la page.</p></main>;
+ const membres=equipe??[],ids=membres.map(m=>m.id);
+ const [{data:pointages,error:pointError},{data:absences,error:absenceError},{data:prioritaires,error:tacheError},{count:retards,error:retardError},{count:corrections,error:correctionError},{count:conges,error:congeError}]=await Promise.all([
+ ids.length?supabase.from("pointages").select("id,utilisateur_id,check_in,check_out,statut").in("utilisateur_id",ids).eq("date",jourPointage):Promise.resolve({data:[],error:null}),
+ ids.length?supabase.from("conges_absences").select("utilisateur_id,nature").in("utilisateur_id",ids).eq("statut","validee").is("deleted_at",null).lte("date_debut",jour).gte("date_fin",jour):Promise.resolve({data:[],error:null}),
+ supabase.from("taches").select("id,titre,echeance,priorite").eq("entreprise_id",profil.entreprise_id).is("deleted_at",null).neq("statut","terminee").or("priorite.in.(urgent,important),echeance.lt."+iso).order("echeance",{ascending:true,nullsFirst:false}).limit(8),
+ supabase.from("taches").select("id",{count:"exact",head:true}).eq("entreprise_id",profil.entreprise_id).is("deleted_at",null).neq("statut","terminee").lt("echeance",iso),
+ ids.length?supabase.from("corrections").select("id",{count:"exact",head:true}).in("auteur_id",ids).eq("statut","en_attente"):Promise.resolve({count:0,error:null}),
+ ids.length?supabase.from("conges_absences").select("id",{count:"exact",head:true}).in("utilisateur_id",ids).eq("statut","en_attente").is("deleted_at",null):Promise.resolve({count:0,error:null})
+ ]);
+ const pointIds=(pointages??[]).filter(p=>p.statut==="ouvert").map(p=>p.id);
+ const {data:pauses,error:pauseError}=pointIds.length?await supabase.from("pauses").select("pointage_id").in("pointage_id",pointIds).is("fin",null):{data:[],error:null};
+ const plans=await Promise.all(membres.map(m=>supabase.rpc("obtenir_planning",{p_utilisateur_id:m.id,p_debut:jour,p_fin:jour})));
+ const personnes:LignePresence[]=membres.map((m,i)=>{
+  const p=(pointages??[]).find(p=>p.utilisateur_id===m.id);
+  const a=(absences??[]).find(x=>x.utilisateur_id===m.id);
+  const plan=plans[i],slots=(plan.data??[]).filter(x=>x.type==="horaire_travail"&&x.heure_debut&&x.heure_fin);
+  const horaire=slots.map(x=>x.heure_debut!.slice(0,5)+"–"+x.heure_fin!.slice(0,5)).join(" · ")||"—";
+  let etat:EtatPresence="inconnu";
+  if(!pointError&&!pauseError){
+   if(p?.statut==="ouvert"&&p.check_in)etat=(pauses??[]).some(x=>x.pointage_id===p.id)?"pause":"present";
+   else if(p?.statut==="ferme")etat="termine";
+   else if(!absenceError&&a)etat=a.nature==="conge"?"conge":"absence";
+   else if(!plan.error&&!absenceError)etat=!slots.length?"repos":slots.some(x=>nowMinute>=(minutes(x.heure_debut)??1440))?"non_pointe":"a_venir";
+  }
+  return {id:m.id,nom:m.nom,etat,horaire,arrivee:heure(p?.check_in),depart:heure(p?.check_out)};
+ });
+ const statuts:StatutTache[]=["a_faire","en_cours","en_attente","terminee"];
+ const counts=await Promise.all(statuts.map(statut=>supabase.from("taches").select("id",{count:"exact",head:true}).eq("entreprise_id",profil.entreprise_id).is("deleted_at",null).eq("statut",statut)));
+ const kanban={a_faire:0,en_cours:0,en_attente:0,terminee:0};statuts.forEach((s,i)=>kanban[s]=counts[i].count??0);
+ const alertes:string[]=[];const nonPointes=personnes.filter(p=>p.etat==="non_pointe").length;
+ if(nonPointes)alertes.push(nonPointes+" collaborateur(s) non pointé(s), horaire commencé");
+ if(retards)alertes.push(retards+" tâche(s) en retard");
+ if(personnes.some(p=>p.etat==="inconnu"))alertes.push("Présence à vérifier");
+ const failed=!!(pointError||absenceError||pauseError||tacheError||retardError||correctionError||congeError||plans.some(p=>p.error)||counts.some(c=>c.error));
+ const data:DashboardData={date:now.toLocaleDateString("fr-FR",{timeZone:zone,weekday:"long",day:"numeric",month:"long"}),actualise:heure(iso),personnes,taches:(prioritaires??[]).map(t=>({...t,retard:!!t.echeance&&t.echeance<iso})),retards:retards??0,corrections:corrections??0,conges:conges??0,kanban,alertes,avertissement:failed?"Certaines données sont indisponibles. Les compteurs peuvent être incomplets.":"Pointage : journée UTC actuelle, horaires affichés en heure de Madagascar. Les horaires flexibles ne sont pas encore activés."};
+ return <><DashboardRefresh/><DashboardManagerView data={data}/></>;
 }
