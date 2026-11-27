@@ -38,7 +38,7 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const isPublic = request.nextUrl.pathname === "/auth/invitation" || PUBLIC_PATHS.some((p) => request.nextUrl.pathname.startsWith(p));
+  const isPublic = request.nextUrl.pathname === "/demo-dashboard-manager" || request.nextUrl.pathname === "/auth/invitation" || PUBLIC_PATHS.some((p) => request.nextUrl.pathname.startsWith(p));
 
   try {
     const {
