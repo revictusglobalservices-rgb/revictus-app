@@ -101,3 +101,27 @@ export async function modifierCollaborateur(id:string,input:{nom:string;role:str
  revalidatePath("/manager/collaborateurs");revalidatePath("/manager");revalidatePath("/manager/equipe/"+id);
  return {ok:true,message:"Profil mis à jour."};
 }
+export async function changerStatutCollaborateur(id:string,statut:"actif"|"suspendu"|"archive"){
+ const admin=await administration();
+ if(!admin||process.env.REVICTUS_STATUTS_ENABLED!=="true")return {ok:false,message:"La gestion des accès n’est pas encore activée."};
+ if(typeof id!=="string"||!["actif","suspendu","archive"].includes(statut))return {ok:false,message:"Paramètres invalides."};
+ const {service,profil}=admin;
+ const {data:m,error}=await service.from("utilisateurs").select("id,role,statut,email").eq("id",id).eq("entreprise_id",profil.entreprise_id).is("deleted_at",null).maybeSingle();
+ if(error||!m||m.role==="admin"||m.statut==="invite"||m.statut===statut)return {ok:false,message:"Action non autorisée pour ce compte."};
+ const {data:auth,error:authError}=await service.auth.admin.getUserById(id);
+ if(authError||!auth.user||auth.user.email?.toLowerCase()!==m.email.toLowerCase()||!auth.user.email_confirmed_at)return {ok:false,message:"Identité du compte non vérifiée."};
+ if(statut!=="actif"){
+  const checks=await Promise.all([
+   service.from("utilisateurs").select("id",{count:"exact",head:true}).eq("entreprise_id",profil.entreprise_id).eq("manager_id",id).neq("statut","archive").is("deleted_at",null),
+   service.from("pointages").select("id",{count:"exact",head:true}).eq("utilisateur_id",id).eq("statut","ouvert"),
+   service.from("pointages_flexibles").select("id",{count:"exact",head:true}).eq("utilisateur_id",id).is("fin",null)
+  ]);
+  if(checks.some(c=>c.error||c.count))return {ok:false,message:"Clôturez les pointages ouverts et réattribuez les collaborateurs rattachés avant de continuer."};
+ }
+ const {error:banError}=await service.auth.admin.updateUserById(id,{ban_duration:statut==="actif"?"none":"876000h"});
+ if(banError)return {ok:false,message:"Le changement d'accès a échoué."};
+ const {data,error:e}=await service.from("utilisateurs").update({statut}).eq("id",id).eq("entreprise_id",profil.entreprise_id).eq("statut",m.statut).neq("role","admin").is("deleted_at",null).select("id");
+ if(e||!data?.length){if(statut==="actif")await service.auth.admin.updateUserById(id,{ban_duration:"876000h"});return {ok:false,message:"Le statut doit être vérifié par l’administrateur technique."};}
+ revalidatePath("/manager/collaborateurs");revalidatePath("/manager");
+ return {ok:true,message:statut==="actif"?"Compte réactivé.":statut==="archive"?"Compte archivé. L’historique est conservé.":"Compte suspendu. L’historique est conservé."};
+}
