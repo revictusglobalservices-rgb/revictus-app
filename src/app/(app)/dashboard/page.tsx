@@ -2,6 +2,7 @@
 // pointage du jour, chrono actif, tâches prioritaires, Kanban personnel.
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import {minutesObjectif} from "@/lib/objectifsHoraires";
 import {dateLocale,bornesJour,dureeJour} from "@/lib/pointageFlexible";
 import ChronoWidget from "@/components/ChronoWidget";
 import type { PrioriteTache, StatutTache } from "@/types/database";
@@ -54,6 +55,8 @@ export default async function DashboardCollaborateur() {
   const flexible=profil?.mode_pointage==="flexible"&&!!profil.flexible_depuis&&profil.flexible_depuis<=aujourdhui&&pointage?.statut!=="ouvert";
   const b=bornesJour();
   const {data:flex,error:flexError}=flexible?await supabase.from("pointages_flexibles").select("*").eq("utilisateur_id",user.id).lt("debut",new Date(b.fin).toISOString()).or("fin.is.null,fin.gt."+new Date(b.debut).toISOString()):{data:[],error:null};
+  const {data:hist,error:histErr}=flexible?await supabase.from("objectifs_horaires").select("*").eq("utilisateur_id",user.id).lte("date_effet",aujourdhui):{data:[],error:null};
+  const objectif=minutesObjectif(hist??[],aujourdhui);
   const totalFlex=(flex??[]).reduce((acc,s)=>acc+dureeJour(s,Date.now(),b.debut,b.fin),0);
   let tacheActiveTitre: string | null = null;
   if (sessionActive) {
@@ -83,7 +86,7 @@ export default async function DashboardCollaborateur() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginTop: 24 }}>
         <section className="card">
           <h3>Pointage du jour</h3>
-          {flexible ? (<p style={{color:"var(--ink-2)"}}>{flexError?"Session à vérifier":(flex??[]).some(s=>!s.fin)?"Online":"Offline"} · {formatDuree(totalFlex)} / {formatDuree((profil?.objectif_minutes??360)*60)}</p>) : !pointage ? (
+          {flexible ? (<p style={{color:"var(--ink-2)"}}>{flexError?"Session à vérifier":(flex??[]).some(s=>!s.fin)?"Online":"Offline"} · {formatDuree(totalFlex)} / {histErr?"Objectif à vérifier":objectif>0?formatDuree(objectif*60):"Sans objectif"}</p>) : !pointage ? (
             <p style={{ color: "var(--ink-2)" }}>Pas encore pointé aujourd&apos;hui.</p>
           ) : pointage.statut === "ouvert" ? (
             <p style={{ color: "var(--ink-2)" }}>Arrivée à {formatHeure(pointage.check_in!)} — en cours.</p>

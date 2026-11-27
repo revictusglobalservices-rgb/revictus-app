@@ -1,6 +1,7 @@
 import {createClient} from "@/lib/supabase/server";
 import {redirect} from "next/navigation";
 import DashboardManagerView,{type DashboardData,type LignePresence,type EtatPresence} from "@/components/DashboardManagerView";
+import {minutesObjectif} from "@/lib/objectifsHoraires";
 import {bornesJour,dureeJour,formatDuree} from "@/lib/pointageFlexible";
 import DashboardRefresh from "@/components/DashboardRefresh";
 import type {StatutTache} from "@/types/database";
@@ -35,6 +36,7 @@ export default async function Page(){
  const b=bornesJour(now);
  const flexIds=membres.filter(m=>m.mode_pointage==="flexible"&&m.flexible_depuis&&m.flexible_depuis<=jour).map(m=>m.id);
  const {data:flex,error:flexError}=flexIds.length?await supabase.from("pointages_flexibles").select("*").in("utilisateur_id",flexIds).lt("debut",new Date(b.fin).toISOString()).or("fin.is.null,fin.gt."+new Date(b.debut).toISOString()).order("debut"):{data:[],error:null};
+ const {data:objectifs,error:objError}=flexIds.length?await supabase.from("objectifs_horaires").select("*").in("utilisateur_id",flexIds).lte("date_effet",jour):{data:[],error:null};
  const pointIds=(pointages??[]).filter(p=>p.statut==="ouvert").map(p=>p.id);
  const {data:pauses,error:pauseError}=pointIds.length?await supabase.from("pauses").select("pointage_id").in("pointage_id",pointIds).is("fin",null):{data:[],error:null};
  const plans=await Promise.all(membres.map(m=>supabase.rpc("obtenir_planning",{p_utilisateur_id:m.id,p_debut:jour,p_fin:jour})));
@@ -43,7 +45,7 @@ export default async function Page(){
   const a=(absences??[]).find(x=>x.utilisateur_id===m.id);
   if(flexIds.includes(m.id)&&p?.statut!=="ouvert"){
    const ss=(flex??[]).filter(s=>s.utilisateur_id===m.id),active=ss.some(s=>s.fin===null),total=ss.reduce((x,s)=>x+dureeJour(s,now.getTime(),b.debut,b.fin),0);
-   return {id:m.id,nom:m.nom,etat:flexError?"inconnu":active?"present":a?.nature==="conge"?"conge":a?.nature==="absence"?"absence":"flexible_offline",horaire:"Flexible",travaille:formatDuree(total),objectif:formatDuree((m.objectif_minutes??360)*60),arrivee:heure(ss[0]?.debut),depart:active?"—":heure(ss[ss.length-1]?.fin)};
+   return {id:m.id,nom:m.nom,etat:flexError?"inconnu":active?"present":a?.nature==="conge"?"conge":a?.nature==="absence"?"absence":"flexible_offline",horaire:"Flexible",travaille:formatDuree(total),objectif:objError?"À vérifier":formatDuree(minutesObjectif((objectifs??[]).filter(o=>o.utilisateur_id===m.id),jour)*60),arrivee:heure(ss[0]?.debut),depart:active?"—":heure(ss[ss.length-1]?.fin)};
   }
   const plan=plans[i],slots=(plan.data??[]).filter(x=>x.type==="horaire_travail"&&x.heure_debut&&x.heure_fin);
   const horaire=slots.map(x=>x.heure_debut!.slice(0,5)+"–"+x.heure_fin!.slice(0,5)).join(" · ")||"—";
@@ -63,7 +65,7 @@ export default async function Page(){
  if(nonPointes)alertes.push(nonPointes+" collaborateur(s) non pointé(s), horaire commencé");
  if(retards)alertes.push(retards+" tâche(s) en retard");
  if(personnes.some(p=>p.etat==="inconnu"))alertes.push("Présence à vérifier");
- const failed=!!(pointError||flexError||absenceError||pauseError||tacheError||retardError||correctionError||congeError||plans.some(p=>p.error)||counts.some(c=>c.error));
+ const failed=!!(objError||pointError||flexError||absenceError||pauseError||tacheError||retardError||correctionError||congeError||plans.some(p=>p.error)||counts.some(c=>c.error));
  const data:DashboardData={date:now.toLocaleDateString("fr-FR",{timeZone:zone,weekday:"long",day:"numeric",month:"long"}),actualise:heure(iso),personnes,taches:(prioritaires??[]).map(t=>({...t,retard:!!t.echeance&&t.echeance<iso})),retards:retards??0,corrections:corrections??0,conges:conges??0,kanban,alertes,avertissement:failed?"Certaines données sont indisponibles. Les compteurs peuvent être incomplets.":undefined};
  return <><DashboardRefresh/><DashboardManagerView data={data}/></>;
 }

@@ -67,6 +67,7 @@ export async function renvoyerInvitation(id:string) {
   return {ok:true,message:"Invitation renvoyée avec succès."};
 }
 
+import {dateLocale} from "@/lib/pointageFlexible";
 export async function configurerPointage(id:string,mode:"fixe"|"flexible",minutes:number,date:string){
  const admin=await administration();
  if(!admin||!["fixe","flexible"].includes(mode)||typeof id!=="string"||typeof date!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isInteger(minutes)||minutes<30||minutes>960)return {ok:false,message:"Paramètres invalides."};
@@ -75,6 +76,8 @@ export async function configurerPointage(id:string,mode:"fixe"|"flexible",minute
  if(error||!m)return {ok:false,message:"Collaborateur non autorisé."};
  const {count,error:sessionError}=await service.from("pointages_flexibles").select("id",{count:"exact",head:true}).eq("utilisateur_id",id).is("fin",null);
  if(sessionError||count)return {ok:false,message:"Une session est ouverte : attendez sa clôture."};
+ if(mode==="flexible"&&m.mode_pointage==="flexible")return {ok:false,message:"Utilisez Modifier les objectifs pour préserver l’historique."};
+ if(date<dateLocale())return {ok:false,message:"Choisissez une date à venir."};
  if(mode==="fixe"&&m.mode_pointage==="flexible")return {ok:false,message:"Le retour au mode fixe doit être planifié avec l’administrateur technique."};
  const {error:e}=await service.from("utilisateurs").update({mode_pointage:mode,objectif_minutes:mode==="flexible"?minutes:null,flexible_depuis:mode==="flexible"?date:null}).eq("id",id).eq("entreprise_id",profil.entreprise_id);
  if(e)return {ok:false,message:"Impossible d'enregistrer."};
@@ -124,4 +127,15 @@ export async function changerStatutCollaborateur(id:string,statut:"actif"|"suspe
  if(e||!data?.length){if(statut==="actif")await service.auth.admin.updateUserById(id,{ban_duration:"876000h"});return {ok:false,message:"Le statut doit être vérifié par l’administrateur technique."};}
  revalidatePath("/manager/collaborateurs");revalidatePath("/manager");
  return {ok:true,message:statut==="actif"?"Compte réactivé.":statut==="archive"?"Compte archivé. L’historique est conservé.":"Compte suspendu. L’historique est conservé."};
+}
+
+export async function planifierObjectif(id:string,minutes:number,jours:number[],date:string){
+ const admin=await administration();
+ if(!admin||typeof id!=="string"||!Number.isInteger(minutes)||minutes<30||minutes>960||!Array.isArray(jours)||jours.length<1||jours.length>7||jours.some(j=>!Number.isInteger(j)||j<1||j>7)||new Set(jours).size!==jours.length||typeof date!=="string"||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date)||date<=dateLocale())return {ok:false,message:"Choisissez les jours, un objectif valide et une date future."};
+ const {service,profil}=admin;
+ const {data:m,error}=await service.from("utilisateurs").select("id,flexible_depuis").eq("id",id).eq("entreprise_id",profil.entreprise_id).eq("role","collaborateur").eq("statut","actif").eq("mode_pointage","flexible").is("deleted_at",null).maybeSingle();
+ if(error||!m||!m.flexible_depuis||date<m.flexible_depuis)return {ok:false,message:"Ce compte ne permet pas cette modification."};
+ const {error:e}=await service.from("objectifs_horaires").upsert({utilisateur_id:id,date_effet:date,objectif_minutes:minutes,jours:[...jours].sort((a,b)=>a-b)},{onConflict:"utilisateur_id,date_effet"});
+ if(e)return {ok:false,message:"Impossible d’enregistrer l’objectif."};
+ revalidatePath("/manager/collaborateurs");revalidatePath("/manager/planning");revalidatePath("/manager/planning/suivi");return {ok:true,message:"Nouvel objectif planifié. L’historique est conservé."};
 }

@@ -126,6 +126,7 @@ export type SessionTemps = {
 
 export type TypePause = "petite_pause" | "pause_dejeuner" | "permission";
 
+export type ObjectifHoraire = {utilisateur_id:string;date_effet:string;objectif_minutes:number;jours:number[];created_at:string};
 export type PointageFlexible = {id:string;utilisateur_id:string;debut:string;fin:string|null};
 
 export type Pause = {
@@ -283,6 +284,7 @@ export type Database = {
       pieces_jointes: TableDef<PieceJointe>;
       pointages: TableDef<Pointage>;
       pointages_flexibles: TableDef<PointageFlexible>;
+      objectifs_horaires: TableDef<ObjectifHoraire>;
       pauses: TableDef<Pause>;
       sessions_temps: TableDef<SessionTemps>;
       corrections: TableDef<Correction>;

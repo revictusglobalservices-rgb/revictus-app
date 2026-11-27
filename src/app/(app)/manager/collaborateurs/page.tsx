@@ -9,5 +9,8 @@ export default async function Page(){
   if(!admin) redirect("/");
   const {data,error}=await admin.service.from("utilisateurs").select("id,nom,email,role,manager_id,statut,mode_pointage,objectif_minutes,flexible_depuis").eq("entreprise_id",admin.profil.entreprise_id).is("deleted_at",null).order("nom");
   if(error) return <main style={{padding:32}}><h1>Collaborateurs</h1><p>Impossible de charger les membres de l’équipe.</p></main>;
-  return <CollaborateursPanel membres={data??[]} statutsActifs={process.env.REVICTUS_STATUTS_ENABLED==="true"}/>;
+  const ids=(data??[]).map(m=>m.id);
+  const {data:objectifs,error:objError}=ids.length?await admin.service.from("objectifs_horaires").select("*").in("utilisateur_id",ids).order("date_effet",{ascending:false}):{data:[],error:null};
+  if(objError)return <main style={{padding:32}}><h1>Collaborateurs</h1><p>Impossible de charger les objectifs horaires.</p></main>;
+  return <CollaborateursPanel objectifs={objectifs??[]} membres={data??[]} statutsActifs={process.env.REVICTUS_STATUTS_ENABLED==="true"}/>;
 }

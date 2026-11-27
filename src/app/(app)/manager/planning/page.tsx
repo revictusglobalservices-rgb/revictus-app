@@ -142,7 +142,7 @@ export default async function PlanningEquipe({ searchParams }: { searchParams: {
   return (
     <main style={{ padding: "24px 32px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 12, marginBottom: 4 }}>
-        <h1 style={{ color: "var(--navy)", margin: 0 }}>Planning des employés</h1>
+        <h1 style={{ color: "var(--navy)", margin: 0 }}>Planning des employés</h1><a href="/manager/planning/suivi" style={navBtn()}>Suivi des heures →</a>
       </div>
       <p style={{ color: "var(--ink-2)", marginTop: 4, marginBottom: 20 }}>Vue d&apos;ensemble des plannings de l&apos;équipe.</p>
 
