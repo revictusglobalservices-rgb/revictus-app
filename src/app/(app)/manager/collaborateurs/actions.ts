@@ -80,3 +80,48 @@ export async function configurerPointage(id:string,mode:"fixe"|"flexible",minute
  if(e)return {ok:false,message:"Impossible d'enregistrer."};
  revalidatePath("/manager/collaborateurs");revalidatePath("/manager");return {ok:true,message:"Paramètres enregistrés. Le pointage fixe déjà ouvert devra être clôturé."};
 }
+
+export async function modifierCollaborateur(id:string,input:{nom:string;role:string;managerId:string}){
+ const admin=await administration();
+ if(!admin||typeof id!=="string"||!input||typeof input.nom!=="string"||typeof input.managerId!=="string"||!["collaborateur","manager"].includes(input.role))return {ok:false,message:"Modification non autorisée."};
+ const nom=input.nom.trim(),managerId=input.managerId||null;
+ if(!nom||nom.length>120||managerId===id)return {ok:false,message:"Vérifiez le nom et le manager."};
+ const {service,profil}=admin;
+ const {data:all,error}=await service.from("utilisateurs").select("id,role,statut,manager_id").eq("entreprise_id",profil.entreprise_id).is("deleted_at",null);
+ if(error||!all)return {ok:false,message:"Impossible de vérifier l’équipe."};
+ const target=all.find(m=>m.id===id);
+ if(!target||target.role==="admin"||target.statut==="archive"||target.statut==="invite")return {ok:false,message:"Ce profil ne peut pas être modifié."};
+ if(target.role==="manager"&&input.role==="collaborateur"&&all.some(m=>m.manager_id===id&&m.statut!=="archive"))return {ok:false,message:"Réattribuez d’abord les collaborateurs de ce manager."};
+ if(managerId){
+  let next:string|null=managerId;const seen=new Set<string>([id]);
+  while(next){if(seen.has(next))return {ok:false,message:"Ce rattachement créerait une boucle hiérarchique."};seen.add(next);const manager=all.find(m=>m.id===next);if(!manager||manager.statut!=="actif"||!["admin","manager"].includes(manager.role))return {ok:false,message:"Manager non valide."};next=manager.manager_id;}
+ }
+ const {data,error:e}=await service.from("utilisateurs").update({nom,role:input.role as "collaborateur"|"manager",manager_id:managerId}).eq("id",id).eq("entreprise_id",profil.entreprise_id).neq("role","admin").eq("statut",target.statut).is("deleted_at",null).select("id");
+ if(e||!data?.length)return {ok:false,message:"Impossible d’enregistrer la modification."};
+ revalidatePath("/manager/collaborateurs");revalidatePath("/manager");revalidatePath("/manager/equipe/"+id);
+ return {ok:true,message:"Profil mis à jour."};
+}
+export async function changerStatutCollaborateur(id:string,statut:"actif"|"suspendu"|"archive"){
+ const admin=await administration();
+ if(!admin||process.env.REVICTUS_STATUTS_ENABLED!=="true")return {ok:false,message:"La gestion des accès n’est pas encore activée."};
+ if(typeof id!=="string"||!["actif","suspendu","archive"].includes(statut))return {ok:false,message:"Paramètres invalides."};
+ const {service,profil}=admin;
+ const {data:m,error}=await service.from("utilisateurs").select("id,role,statut,email").eq("id",id).eq("entreprise_id",profil.entreprise_id).is("deleted_at",null).maybeSingle();
+ if(error||!m||m.role==="admin"||m.statut==="invite"||m.statut===statut)return {ok:false,message:"Action non autorisée pour ce compte."};
+ const {data:auth,error:authError}=await service.auth.admin.getUserById(id);
+ if(authError||!auth.user||auth.user.email?.toLowerCase()!==m.email.toLowerCase()||!auth.user.email_confirmed_at)return {ok:false,message:"Identité du compte non vérifiée."};
+ if(statut!=="actif"){
+  const checks=await Promise.all([
+   service.from("utilisateurs").select("id",{count:"exact",head:true}).eq("entreprise_id",profil.entreprise_id).eq("manager_id",id).neq("statut","archive").is("deleted_at",null),
+   service.from("pointages").select("id",{count:"exact",head:true}).eq("utilisateur_id",id).eq("statut","ouvert"),
+   service.from("pointages_flexibles").select("id",{count:"exact",head:true}).eq("utilisateur_id",id).is("fin",null)
+  ]);
+  if(checks.some(c=>c.error||c.count))return {ok:false,message:"Clôturez les pointages ouverts et réattribuez les collaborateurs rattachés avant de continuer."};
+ }
+ const {error:banError}=await service.auth.admin.updateUserById(id,{ban_duration:statut==="actif"?"none":"876000h"});
+ if(banError)return {ok:false,message:"Le changement d'accès a échoué."};
+ const {data,error:e}=await service.from("utilisateurs").update({statut}).eq("id",id).eq("entreprise_id",profil.entreprise_id).eq("statut",m.statut).neq("role","admin").is("deleted_at",null).select("id");
+ if(e||!data?.length){if(statut==="actif")await service.auth.admin.updateUserById(id,{ban_duration:"876000h"});return {ok:false,message:"Le statut doit être vérifié par l’administrateur technique."};}
+ revalidatePath("/manager/collaborateurs");revalidatePath("/manager");
+ return {ok:true,message:statut==="actif"?"Compte réactivé.":statut==="archive"?"Compte archivé. L’historique est conservé.":"Compte suspendu. L’historique est conservé."};
+}

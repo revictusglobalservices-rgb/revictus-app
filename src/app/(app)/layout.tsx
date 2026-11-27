@@ -17,8 +17,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: profil } = await supabase.from("utilisateurs").select("nom, role").eq("id", user.id).single();
-  if (!profil) redirect("/login");
+  const { data: profil } = await supabase.from("utilisateurs").select("nom, role, statut, deleted_at").eq("id", user.id).single();
+  if (!profil || profil.deleted_at || profil.statut==="suspendu" || profil.statut==="archive") redirect("/login");
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "var(--app-bg)" }}>
