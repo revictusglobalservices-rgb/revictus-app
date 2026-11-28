@@ -278,12 +278,16 @@ export type IdeePieceJointe = {
 // À affiner (ou remplacer entièrement) avec `supabase gen types`.
 type TableDef<Row> = { Row: Row; Insert: Partial<Row>; Update: Partial<Row>; Relationships: [] };
 
+export type RapportActivite={id:string;auteur_id:string;entreprise_id:string;client_id:string|null;jour:string;activites:string;difficultes:string;restantes:string;statut:"a_valider"|"a_corriger"|"valide";qualite:"conforme"|"a_ameliorer"|"non_conforme"|null;observations:string;evaluateur_id:string|null;created_at:string;updated_at:string;version:number};
+export type RapportHistorique={id:string;rapport_id:string;version:number;acteur_id:string;instant:string;instantane:RapportActivite};
 export type Database = {
   public: {
     Tables: {
       utilisateurs: TableDef<Utilisateur>;
       taches: TableDef<Tache>;
       clients: TableDef<ClientKanban>;
+      rapports_activite: TableDef<RapportActivite>;
+      rapports_activite_historique: TableDef<RapportHistorique>;
       acces_clients: TableDef<AccesClient>;
       colonnes_kanban: TableDef<ColonneKanban>;
       commentaires: TableDef<Commentaire>;

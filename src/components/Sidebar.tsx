@@ -105,6 +105,7 @@ export default function Sidebar({ nom, role }: { nom: string; role: RoleUtilisat
     { href: "/chrono", label: "Chrono", icone: <IconeChrono /> },
     { href: "/kanban", label: "Kanban", icone: <IconeKanban /> },
     ...(role !== "collaborateur" ? [{ href: "/manager/performances", label: "Performances", icone: <IconePerformances /> }] : []),
+    { href: "/rapports", label: "Rapports & qualité", icone: <IconeCorrections /> },
     { href: "/corrections", label: "Corrections", icone: <IconeCorrections /> },
     { href: "/idees", label: "Boîte à idées", icone: <IconeIdee /> },
   ];
