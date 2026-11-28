@@ -282,8 +282,10 @@ export type RapportActivite={id:string;auteur_id:string;entreprise_id:string;cli
 export type RapportHistorique={id:string;rapport_id:string;version:number;acteur_id:string;instant:string;instantane:RapportActivite};
 export type DeviseCommerciale="USD"|"EUR"|"MGA"|"CHF"|"CAD";
 export type LigneCommerciale={designation:string;quantite:string;prix:string;taxe:string};
-export type ClientCommercial={id:string;entreprise_id:string;client_operationnel_id:string|null;nom:string;email:string;adresse:string;pays:string;identifiant_fiscal:string;devise:DeviseCommerciale;created_at:string};
-export type DocumentCommercial={id:string;entreprise_id:string;client_id:string;auteur_id:string;type:"devis"|"facture"|"avoir";source_id:string|null;jour:string;echeance:string|null;devise:DeviseCommerciale;lignes:LigneCommerciale[];total_ht:number;total_taxe:number;total_ttc:number;notes:string;statut:"brouillon";version:number;created_at:string;updated_at:string};
+export type ClientCommercial={id:string;entreprise_id:string;client_operationnel_id:string|null;nom:string;email:string;adresse:string;pays:string;identifiant_fiscal:string;rcs:string;stat:string;devise:DeviseCommerciale;created_at:string};
+export type DocumentCommercial={id:string;entreprise_id:string;client_id:string;auteur_id:string;type:"devis"|"facture"|"avoir";source_id:string|null;jour:string;echeance:string|null;devise:DeviseCommerciale;lignes:LigneCommerciale[];total_ht:number;total_taxe:number;total_ttc:number;notes:string;statut:"brouillon"|"emis";numero:string|null;emis_le:string|null;emetteur:CommercialParametres|null;destinataire:ClientCommercial|null;version:number;created_at:string;updated_at:string};
+export type CommercialParametres={entreprise_id:string;nom:string;adresse:string;email:string;rcs:string;nif:string;stat:string;iban:string;swift:string;mention_fiscale:string;logo:string|null;confirme:boolean};
+export type CommercialReglement={id:string;entreprise_id:string;facture_id:string;auteur_id:string;jour:string;montant:number;mode:"virement"|"especes"|"carte"|"autre";reference:string;created_at:string};
 export type Database = {
   public: {
     Tables: {
@@ -292,6 +294,8 @@ export type Database = {
       clients: TableDef<ClientKanban>;
       commercial_clients: TableDef<ClientCommercial>;
       commercial_documents: TableDef<DocumentCommercial>;
+      commercial_parametres: TableDef<CommercialParametres>;
+      commercial_reglements: TableDef<CommercialReglement>;
       rapports_activite: TableDef<RapportActivite>;
       rapports_activite_historique: TableDef<RapportHistorique>;
       acces_clients: TableDef<AccesClient>;
