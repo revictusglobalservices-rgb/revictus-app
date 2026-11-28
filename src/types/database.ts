@@ -280,12 +280,18 @@ type TableDef<Row> = { Row: Row; Insert: Partial<Row>; Update: Partial<Row>; Rel
 
 export type RapportActivite={id:string;auteur_id:string;entreprise_id:string;client_id:string|null;jour:string;activites:string;difficultes:string;restantes:string;statut:"a_valider"|"a_corriger"|"valide";qualite:"conforme"|"a_ameliorer"|"non_conforme"|null;observations:string;evaluateur_id:string|null;created_at:string;updated_at:string;version:number};
 export type RapportHistorique={id:string;rapport_id:string;version:number;acteur_id:string;instant:string;instantane:RapportActivite};
+export type DeviseCommerciale="USD"|"EUR"|"MGA"|"CHF"|"CAD";
+export type LigneCommerciale={designation:string;quantite:string;prix:string;taxe:string};
+export type ClientCommercial={id:string;entreprise_id:string;client_operationnel_id:string|null;nom:string;email:string;adresse:string;pays:string;identifiant_fiscal:string;devise:DeviseCommerciale;created_at:string};
+export type DocumentCommercial={id:string;entreprise_id:string;client_id:string;auteur_id:string;type:"devis"|"facture"|"avoir";source_id:string|null;jour:string;echeance:string|null;devise:DeviseCommerciale;lignes:LigneCommerciale[];total_ht:number;total_taxe:number;total_ttc:number;notes:string;statut:"brouillon";version:number;created_at:string;updated_at:string};
 export type Database = {
   public: {
     Tables: {
       utilisateurs: TableDef<Utilisateur>;
       taches: TableDef<Tache>;
       clients: TableDef<ClientKanban>;
+      commercial_clients: TableDef<ClientCommercial>;
+      commercial_documents: TableDef<DocumentCommercial>;
       rapports_activite: TableDef<RapportActivite>;
       rapports_activite_historique: TableDef<RapportHistorique>;
       acces_clients: TableDef<AccesClient>;
